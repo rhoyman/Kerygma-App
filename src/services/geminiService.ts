@@ -10,19 +10,8 @@ let aiClient: any = null;
 async function getAI() {
   if (aiClient) return aiClient;
   
-  let apiKey = '';
-  
-  try {
-    // 1. Try standard Vite env (preferred)
-    apiKey = import.meta.env.VITE_GEMINI_API_KEY || '';
-    
-    // 2. Try the defined process.env variables (AI Studio standard)
-    if (!apiKey || apiKey === 'undefined' || apiKey === 'null' || apiKey.trim() === '') {
-      apiKey = (process.env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY || '') as string;
-    }
-  } catch (e) {
-    // Falls back to empty string if access fails
-  }
+  // Use process.env.GEMINI_API_KEY directly - Vite will replace this via 'define' in vite.config.ts
+  const apiKey = process.env.GEMINI_API_KEY;
 
   if (!apiKey || apiKey === 'undefined' || apiKey === 'null' || apiKey.trim() === '') {
     return null;
@@ -184,7 +173,7 @@ export async function generateSequencing(
   numSessions: number = 5
 ): Promise<{ activities: Activity[], finalProductTitle: string, finalProductDescription: string, finalProduct: string, justification: string }> {
   const ai = await getAI();
-  if (!ai) return { activities: [], finalProductTitle: "", finalProductDescription: "", finalProduct: "IA no configurada. Por favor, añade tu clave de API de Gemini bajo el nombre VITE_GEMINI_API_KEY en el botón 'Settings' (Ajustes) en la parte superior de la ventana de AI Studio.", justification: "" };
+  if (!ai) return { activities: [], finalProductTitle: "", finalProductDescription: "", finalProduct: "IA no configurada. Por favor, añade tu clave en 'Settings' como VITE_GEMINI_API_KEY.", justification: "" };
 
   const prompt = `Como experto en diseño instruccional para Religión Católica, crea una propuesta completa para una Situación de Aprendizaje organizada en ${numSessions} sesiones.
   
@@ -310,7 +299,7 @@ export async function regenerateFinalProduct(
   productMode: string
 ): Promise<{ title: string, description: string }> {
   const ai = await getAI();
-  if (!ai) return { title: "", description: "IA no configurada. Por favor, añade tu clave de API de Gemini bajo el nombre VITE_GEMINI_API_KEY en el botón 'Settings' (Ajustes) en la parte superior de la ventana de AI Studio." };
+  if (!ai) return { title: "", description: "IA no configurada. Añádela en 'Settings' como VITE_GEMINI_API_KEY." };
 
   const prompt = `Como experto en diseño instruccional, propón un NUEVO producto final para esta situación de aprendizaje con un título motivador y una descripción detallada.
   
