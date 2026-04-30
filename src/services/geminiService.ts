@@ -3,10 +3,42 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { GoogleGenAI } from "@google/genai";
 import { Activity } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+let aiClient: any = null;
+
+async function getAI() {
+  if (aiClient) return aiClient;
+  
+  let apiKey = '';
+  
+  // Try Vite env first
+  if (import.meta.env.VITE_GEMINI_API_KEY) {
+    apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+  }
+  
+  // Try process.env next (shimmed by define)
+  if (!apiKey || apiKey === 'undefined' || apiKey === 'null') {
+    try {
+      apiKey = process.env.GEMINI_API_KEY as string;
+    } catch (e) {
+      // Ignore
+    }
+  }
+
+  if (!apiKey || apiKey === 'undefined' || apiKey === 'null' || apiKey.trim() === '') {
+    return null;
+  }
+  
+  try {
+    const { GoogleGenAI } = await import("@google/genai");
+    aiClient = new GoogleGenAI({ apiKey: apiKey.trim() });
+    return aiClient;
+  } catch (err) {
+    console.error("Gemini SDK initialization error:", err);
+    return null;
+  }
+}
 
 export async function suggestConcrecion(
   stage: string,
@@ -14,6 +46,9 @@ export async function suggestConcrecion(
   description: string,
   type: 'criterio' | 'saber'
 ): Promise<string> {
+  const ai = await getAI();
+  if (!ai) return "La inteligencia artificial no está configurada.";
+
   const prompt = `Actúa como un experto en pedagogía de Religión Católica y currículo LOMLOE.
   Necesito concretar contenidos específicos para el aula basados en el siguiente ${type}:
   
@@ -42,12 +77,15 @@ export async function evaluateLinks(
   criterionDescription: string,
   saberes: { id: string, description: string }[]
 ): Promise<string[]> {
+  const ai = await getAI();
+  if (!ai) return [];
+
   const prompt = `Actúa como un experto en el currículo de Religión Católica.
   Tengo el siguiente Criterio de Evaluación:
   "${criterionDescription}"
   
   Y tengo esta lista de Saberes Básicos disponibles:
-  ${saberes.map((s, index) => `${index + 1}. [ID: ${s.id}] ${s.description}`).join('\n')}
+  ${saberes.map((s: any, index: number) => `${index + 1}. [ID: ${s.id}] ${s.description}`).join('\n')}
   
   Determina qué Saberes Básicos de la lista son necesarios o están directamente relacionados para alcanzar este Criterio de Evaluación.
   Responde ÚNICAMENTE con los IDs de los saberes seleccionados (ejemplo: sb-1, sb-ESO-2), separados por comas. 
@@ -63,7 +101,7 @@ export async function evaluateLinks(
     if (text === "NINGUNO") return [];
     
     // Parse the IDs from the response
-    return text.split(',').map(id => id.trim()).filter(id => saberes.some(s => s.id === id));
+    return text.split(',').map((id: string) => id.trim()).filter((id: string) => saberes.some((s: any) => s.id === id));
   } catch (error) {
     console.error("Error evaluating links:", error);
     return [];
@@ -74,6 +112,9 @@ export async function suggestSaberesForCriteria(
   criteriaDescriptions: string[],
   saberes: { id: string, description: string, category: string }[]
 ): Promise<string[]> {
+  const ai = await getAI();
+  if (!ai) return [];
+
   const prompt = `Actúa como un experto en el currículo de Religión Católica.
   He seleccionado estos Criterios de Evaluación para una situación de aprendizaje:
   ${criteriaDescriptions.map((c, i) => `${i + 1}. ${c}`).join('\n')}
@@ -92,7 +133,7 @@ export async function suggestSaberesForCriteria(
     });
     const text = response.text?.trim() || "";
     if (text === "NINGUNO") return [];
-    return text.split(',').map(id => id.trim()).filter(id => id.length > 0);
+    return text.split(',').map((id: string) => id.trim()).filter((id: string) => id.length > 0);
   } catch (error) {
     console.error("Error suggesting saberes:", error);
     return [];
@@ -104,6 +145,9 @@ export async function suggestUnitContent(
   materials?: string,
   extraContext?: string
 ): Promise<string> {
+  const ai = await getAI();
+  if (!ai) return "La inteligencia artificial no está configurada.";
+
   const prompt = `Actúa como un experto pedagogo en Religión Católica.
   Basándote en los siguientes elementos curriculares seleccionados:
   ${curriculum}
@@ -136,6 +180,9 @@ export async function generateSequencing(
   productMode: 'cumulative' | 'compilatory',
   numSessions: number = 5
 ): Promise<{ activities: Activity[], finalProductTitle: string, finalProductDescription: string, finalProduct: string, justification: string }> {
+  const ai = await getAI();
+  if (!ai) return { activities: [], finalProductTitle: "", finalProductDescription: "", finalProduct: "IA no configurada.", justification: "" };
+
   const prompt = `Como experto en diseño instruccional para Religión Católica, crea una propuesta completa para una Situación de Aprendizaje organizada en ${numSessions} sesiones.
   
   CURRÍCULO: ${curriculum}
@@ -207,7 +254,10 @@ export async function regenerateActivity(
   methodology: string,
   currentActivities: Activity[]
 ): Promise<Activity> {
+  const ai = await getAI();
   const currentActivity = currentActivities[activityIndex];
+  if (!ai) return currentActivity;
+
   const prompt = `Como experto en diseño instruccional, necesito regenerar la ACTIVIDAD ${activityIndex + 1} de una situación de aprendizaje porque la propuesta actual no nos convence.
   
   CONTEXTO:
@@ -256,6 +306,9 @@ export async function regenerateFinalProduct(
   activities: Activity[],
   productMode: string
 ): Promise<{ title: string, description: string }> {
+  const ai = await getAI();
+  if (!ai) return { title: "", description: "IA no configurada." };
+
   const prompt = `Como experto en diseño instruccional, propón un NUEVO producto final para esta situación de aprendizaje con un título motivador y una descripción detallada.
   
   CONTENIDO: ${content}
@@ -294,6 +347,9 @@ export async function analyzeExistingContent(
     saberes: { id: string, description: string }[]
   }
 ): Promise<{ ceIds: string[], critIds: string[], saberIds: string[] }> {
+  const ai = await getAI();
+  if (!ai) return { ceIds: [], critIds: [], saberIds: [] };
+
   const prompt = `Actúa como un experto en el currículo de Religión Católica LOMLOE.
   El usuario dispone de los siguientes materiales o descripción de contenido:
   "${materials}"
