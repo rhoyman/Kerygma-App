@@ -12,14 +12,16 @@ async function getAI() {
   
   let apiKey = '';
   
-  // Try all possible sources for the API key
   try {
-    apiKey = import.meta.env.VITE_GEMINI_API_KEY || 
-             (process.env as any).VITE_GEMINI_API_KEY || 
-             (process.env as any).GEMINI_API_KEY || 
-             '';
+    // 1. Try standard Vite env (preferred)
+    apiKey = import.meta.env.VITE_GEMINI_API_KEY || '';
+    
+    // 2. Try the defined process.env variables (AI Studio standard)
+    if (!apiKey || apiKey === 'undefined' || apiKey === 'null' || apiKey.trim() === '') {
+      apiKey = (process.env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY || '') as string;
+    }
   } catch (e) {
-    // Ignore errors accessing process.env
+    // Falls back to empty string if access fails
   }
 
   if (!apiKey || apiKey === 'undefined' || apiKey === 'null' || apiKey.trim() === '') {
