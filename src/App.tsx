@@ -949,7 +949,7 @@ export default function App() {
                   <span className="text-[10px] font-bold uppercase tracking-widest">IA no configurada</span>
                 </div>
                 <p className="text-[10px] text-amber-500 leading-tight">
-                  La IA no detecta tu clave. Haz clic en <b>Settings</b> (icono de engranaje) y añade <b>VITE_GEMINI_API_KEY</b> con tu clave de Google AI Studio.
+                  La IA no detecta tu clave. Haz clic en <b>Settings</b> (icono de engranaje arriba a la derecha) y añade una variable llamada <b>VITE_GEMINI_API_KEY</b> con tu clave de API.
                 </p>
               </div>
             )}
