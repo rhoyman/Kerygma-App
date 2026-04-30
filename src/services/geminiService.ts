@@ -12,22 +12,17 @@ async function getAI() {
   
   let apiKey = '';
   
-  // Try Vite env first
-  if (import.meta.env.VITE_GEMINI_API_KEY) {
-    apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-  }
-  
-  // Try process.env next (shimmed by define)
-  if (!apiKey || apiKey === 'undefined' || apiKey === 'null') {
-    try {
-      apiKey = (process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY) as string;
-    } catch (e) {
-      // Ignore
-    }
+  // Try all possible sources for the API key
+  try {
+    apiKey = import.meta.env.VITE_GEMINI_API_KEY || 
+             (process.env as any).VITE_GEMINI_API_KEY || 
+             (process.env as any).GEMINI_API_KEY || 
+             '';
+  } catch (e) {
+    // Ignore errors accessing process.env
   }
 
   if (!apiKey || apiKey === 'undefined' || apiKey === 'null' || apiKey.trim() === '') {
-    console.warn("VITE_GEMINI_API_KEY no detectada. Por favor, asegúrate de configurar la clave bajo el nombre VITE_GEMINI_API_KEY en el menú 'Settings' (Ajustes) de AI Studio.");
     return null;
   }
   
