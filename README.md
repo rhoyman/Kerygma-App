@@ -1,31 +1,22 @@
-# Kerygma App - Configuración de GitHub y Firebase
+# Kerygma - Planificador Pedagógico Inteligente
 
-## 1. Despliegue en GitHub Pages
-He configurado un **GitHub Action** para que tu aplicación se despliegue automáticamente cada vez que hagas un push a la rama principal (`main` o `master`).
+Kerygma es una aplicación diseñada para ayudar a docentes a diseñar Situaciones de Aprendizaje y material didáctico de forma coherente con el currículo educativo actual.
 
-Para que funcione:
-1. Ve a tu repositorio en GitHub.
-2. Ve a **Settings** > **Pages**.
-3. En **Build and deployment** > **Source**, selecciona **GitHub Actions**.
-4. La próxima vez que subas cambios, se desplegará solo.
+## 🚀 Características Principales
 
-## 2. Configuración de OAuth (GitHub Login)
-Para que el botón de "Acceder con GitHub" funcione, debes configurar una aplicación OAuth en GitHub:
+- **Gestión Curricular**: Acceso a Competencias Clave, Competencias Específicas, Saberes Básicos y Criterios de Evaluación.
+- **Planificación de Unidades**: Crea estructuras completas de Unidades Didácticas y Situaciones de Aprendizaje.
+- **Asistente IA**: Generación inteligente de actividades y sugerencias pedagógicas basadas en el currículo (requiere API Key de Gemini).
+- **Exportación**: Descarga tus planificaciones en formatos compatibles para tu programación docente.
+- **Autenticación**: Guarda tus datos de forma segura mediante Google o GitHub.
 
-1. Ve a **GitHub Settings** > **Developer settings** > **OAuth Apps**.
-2. Haz clic en **New OAuth App**.
-3. **Application Name**: Kerygma (o el que quieras).
-4. **Homepage URL**: Pon la URL de tu proyecto en Firebase o la de GitHub Pages.
-   - Ejemplo: `https://kerygmaapp-c2bee.firebaseapp.com`
-5. **Authorization callback URL**: DEBES poner la URL de Firebase Auth.
-   - URL: `https://kerygmaapp-c2bee.firebaseapp.com/__/auth/handler`
-6. Copia el **Client ID** y el **Client Secret**.
-7. Ve a tu **Firebase Console** > **Authentication** > **Sign-in method**.
-8. Añade **GitHub** y pega allí el Client ID y Client Secret que copiaste de GitHub.
+## 📖 Cómo empezar
 
-## 3. Error 404 en GitHub Pages
-El error 404 suele ocurrir porque los navegadores buscan los archivos en la raíz en lugar de en la subcarpeta del repositorio.
-- He actualizado `vite.config.ts` con `base: './'` para que use rutas relativas.
-- He actualizado `index.html` para que apunte correctamente a los scripts.
+1. **Acceso**: Inicia sesión para poder guardar y sincronizar tus progresos.
+2. **Selección de Currículo**: Elige el bloque curricular sobre el que quieres trabajar.
+3. **Diseño**: Utiliza el creador de unidades para definir objetivos y secuenciar actividades.
+4. **IA**: Usa el botón de "Sugerencias IA" para obtener ideas creativas para tus clases.
 
-Si sigues viendo el error, asegúrate de que el despliegue mediante GitHub Actions (punto 1) ha terminado correctamente.
+---
+*Para instrucciones técnicas sobre el despliegue y configuración de Firebase/GitHub, consulta el archivo [SETUP.md](./SETUP.md).*
+
