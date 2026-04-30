@@ -1040,7 +1040,7 @@ export default function App() {
                 }`}
               >
                 <UserIcon className="w-4 h-4" />
-                {isFirebaseEnabled ? 'Acceder con Google' : 'Firebase no Config.'}
+                {isFirebaseEnabled ? 'Acceder con Google' : 'Acceder con Google'}
               </button>
               {isFirebaseEnabled && (
                 <button 
@@ -1052,12 +1052,6 @@ export default function App() {
                 </button>
               )}
             </div>
-          )}
-
-          {!isFirebaseEnabled && (
-            <p className="text-[8px] text-gray-400 text-center leading-tight">
-              Configura las variables de Firebase en la configuración de la App para activar la sincronización.
-            </p>
           )}
 
           <div className="flex flex-col items-center gap-1">
