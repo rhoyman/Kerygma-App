@@ -27,7 +27,7 @@ async function getAI() {
   }
 
   if (!apiKey || apiKey === 'undefined' || apiKey === 'null' || apiKey.trim() === '') {
-    console.warn("VITE_GEMINI_API_KEY no detectada. Por favor, asegúrate de configurar la clave bajo el nombre VITE_GEMINI_API_KEY en el menú 'Settings' (Ajustes) de AI Studio pronto.");
+    console.warn("VITE_GEMINI_API_KEY no detectada. Por favor, asegúrate de configurar la clave bajo el nombre VITE_GEMINI_API_KEY en el menú 'Settings' (Ajustes) de AI Studio.");
     return null;
   }
   
