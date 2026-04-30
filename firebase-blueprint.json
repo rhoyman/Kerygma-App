@@ -1,0 +1,32 @@
+{
+  "entities": {
+    "LearningSituation": {
+      "title": "Learning Situation",
+      "description": "Represents a didactic unit or learning situation.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "stage": { "type": "string" },
+        "level": { "type": "string" },
+        "creationMode": { "type": "string", "enum": ["curriculum", "content"] },
+        "materials": { "type": "string" },
+        "plan": { "type": "object" },
+        "activities": { "type": "array" },
+        "competencias": { "type": "array" },
+        "criterios": { "type": "array" },
+        "saberesBásicos": { "type": "array" },
+        "userId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "title", "userId"]
+    }
+  },
+  "firestore": {
+    "/situations/{situationId}": {
+      "schema": "LearningSituation",
+      "description": "Collection of learning situations indexed by unique ID."
+    }
+  }
+}
