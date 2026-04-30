@@ -10,39 +10,16 @@ let aiClient: any = null;
 async function getAI() {
   if (aiClient) return aiClient;
   
-  // Try to find the API key in all possible places Vite/AI Studio might put it
-  let apiKey = '';
-  
-  try {
-    // 1. Try standard Vite prefixed env var
-    if (import.meta.env.VITE_GEMINI_API_KEY) {
-      apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-      console.log("Gemini API: Key found in import.meta.env.VITE_GEMINI_API_KEY");
-    }
-    
-    // 2. Try the defined replacement from vite.config.ts
-    if (!apiKey || apiKey === 'undefined' || apiKey === 'null' || apiKey.trim() === '') {
-      apiKey = (process.env as any).GEMINI_API_KEY || "";
-      if (apiKey) console.log("Gemini API: Key found in process.env.GEMINI_API_KEY (replacement)");
-    }
+  // Use the variables injected by Vite's 'define'
+  let apiKey = (process.env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY || "").trim();
 
-    // 3. One last check for VITE_ prefixed process.env
-    if (!apiKey || apiKey === 'undefined' || apiKey === 'null' || apiKey.trim() === '') {
-      apiKey = (process.env as any).VITE_GEMINI_API_KEY || "";
-      if (apiKey) console.log("Gemini API: Key found in process.env.VITE_GEMINI_API_KEY (replacement)");
-    }
-  } catch (e) {
-    console.error("Gemini API: Error accessing env vars", e);
-  }
-
-  if (!apiKey || apiKey === 'undefined' || apiKey === 'null' || apiKey.trim() === '') {
-    console.warn("Gemini API: No API key found in any location.");
+  if (!apiKey || apiKey === 'undefined' || apiKey === 'null' || apiKey === '') {
     return null;
   }
   
   try {
     const { GoogleGenAI } = await import("@google/genai");
-    aiClient = new GoogleGenAI({ apiKey: apiKey.trim() });
+    aiClient = new GoogleGenAI({ apiKey });
     return aiClient;
   } catch (err) {
     console.error("Gemini SDK initialization error:", err);
