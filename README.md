@@ -1,20 +1,31 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# Kerygma App - Configuración de GitHub y Firebase
 
-# Run and deploy your AI Studio app
+## 1. Despliegue en GitHub Pages
+He configurado un **GitHub Action** para que tu aplicación se despliegue automáticamente cada vez que hagas un push a la rama principal (`main` o `master`).
 
-This contains everything you need to run your app locally.
+Para que funcione:
+1. Ve a tu repositorio en GitHub.
+2. Ve a **Settings** > **Pages**.
+3. En **Build and deployment** > **Source**, selecciona **GitHub Actions**.
+4. La próxima vez que subas cambios, se desplegará solo.
 
-View your app in AI Studio: https://ai.studio/apps/0cea129f-861b-4f47-b126-962dcaf0fa53
+## 2. Configuración de OAuth (GitHub Login)
+Para que el botón de "Acceder con GitHub" funcione, debes configurar una aplicación OAuth en GitHub:
 
-## Run Locally
+1. Ve a **GitHub Settings** > **Developer settings** > **OAuth Apps**.
+2. Haz clic en **New OAuth App**.
+3. **Application Name**: Kerygma (o el que quieras).
+4. **Homepage URL**: Pon la URL de tu proyecto en Firebase o la de GitHub Pages.
+   - Ejemplo: `https://kerygmaapp-c2bee.firebaseapp.com`
+5. **Authorization callback URL**: DEBES poner la URL de Firebase Auth.
+   - URL: `https://kerygmaapp-c2bee.firebaseapp.com/__/auth/handler`
+6. Copia el **Client ID** y el **Client Secret**.
+7. Ve a tu **Firebase Console** > **Authentication** > **Sign-in method**.
+8. Añade **GitHub** y pega allí el Client ID y Client Secret que copiaste de GitHub.
 
-**Prerequisites:**  Node.js
+## 3. Error 404 en GitHub Pages
+El error 404 suele ocurrir porque los navegadores buscan los archivos en la raíz en lugar de en la subcarpeta del repositorio.
+- He actualizado `vite.config.ts` con `base: './'` para que use rutas relativas.
+- He actualizado `index.html` para que apunte correctamente a los scripts.
 
-
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+Si sigues viendo el error, asegúrate de que el despliegue mediante GitHub Actions (punto 1) ha terminado correctamente.
