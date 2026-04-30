@@ -1,5 +1,5 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider } from 'firebase/auth';
+import { getAuth, GoogleAuthProvider, GithubAuthProvider } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 
 const firebaseConfig = {
@@ -19,5 +19,6 @@ const app = (firebaseConfig.apiKey && getApps().length === 0)
 export const auth = app ? getAuth(app) : null;
 export const db = app ? getFirestore(app) : null;
 export const googleProvider = new GoogleAuthProvider();
+export const githubProvider = new GithubAuthProvider();
 
 export const isFirebaseEnabled = !!app;

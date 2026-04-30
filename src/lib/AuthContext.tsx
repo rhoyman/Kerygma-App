@@ -1,11 +1,11 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { User, onAuthStateChanged, signInWithPopup, signOut } from 'firebase/auth';
-import { auth, googleProvider, isFirebaseEnabled } from './firebase';
+import { auth, googleProvider, githubProvider, isFirebaseEnabled } from './firebase';
 
 interface AuthContextType {
   user: User | null;
   loading: boolean;
-  login: () => Promise<void>;
+  login: (provider?: 'google' | 'github') => Promise<void>;
   logout: () => Promise<void>;
   isFirebaseEnabled: boolean;
 }
@@ -30,9 +30,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => unsubscribe();
   }, []);
 
-  const login = async () => {
+  const login = async (provider: 'google' | 'github' = 'google') => {
     if (!auth) throw new Error('Firebase no está configurado');
-    await signInWithPopup(auth, googleProvider);
+    const authProvider = provider === 'github' ? githubProvider : googleProvider;
+    await signInWithPopup(auth, authProvider);
   };
 
   const logout = async () => {

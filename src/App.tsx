@@ -42,7 +42,8 @@ import {
   LogOut,
   User as UserIcon,
   FileJson,
-  ClipboardList
+  ClipboardList,
+  Github
 } from 'lucide-react';
 import { CurriculumBlock, Competencia, SaberBásico, Criterio, Activity, UnitPlan } from './types';
 import { DEFAULT_CURRICULUM } from './data/curriculumDefaults';
@@ -1028,18 +1029,29 @@ export default function App() {
               </div>
             </div>
           ) : (
-            <button 
-              onClick={() => login()}
-              disabled={!isFirebaseEnabled}
-              className={`w-full py-2.5 rounded-xl text-[10px] font-bold uppercase tracking-widest flex items-center justify-center gap-2 transition-all ${
-                isFirebaseEnabled 
-                  ? 'bg-primary text-white hover:bg-primary/90' 
-                  : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-              }`}
-            >
-              <UserIcon className="w-4 h-4" />
-              {isFirebaseEnabled ? 'Acceder con Google' : 'Firebase no Config.'}
-            </button>
+            <div className="flex flex-col gap-2">
+              <button 
+                onClick={() => login('google')}
+                disabled={!isFirebaseEnabled}
+                className={`w-full py-2.5 rounded-xl text-[10px] font-bold uppercase tracking-widest flex items-center justify-center gap-2 transition-all ${
+                  isFirebaseEnabled 
+                    ? 'bg-primary text-white hover:bg-primary/90' 
+                    : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                }`}
+              >
+                <UserIcon className="w-4 h-4" />
+                {isFirebaseEnabled ? 'Acceder con Google' : 'Firebase no Config.'}
+              </button>
+              {isFirebaseEnabled && (
+                <button 
+                  onClick={() => login('github')}
+                  className="w-full py-2.5 rounded-xl text-[10px] font-bold uppercase tracking-widest flex items-center justify-center gap-2 transition-all bg-gray-900 text-white hover:bg-gray-800"
+                >
+                  <Github className="w-4 h-4" />
+                  Acceder con GitHub
+                </button>
+              )}
+            </div>
           )}
 
           {!isFirebaseEnabled && (
