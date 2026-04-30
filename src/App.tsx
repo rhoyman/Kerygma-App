@@ -65,7 +65,8 @@ import {
   generateSequencing,
   suggestSaberesForCriteria,
   regenerateActivity,
-  regenerateFinalProduct
+  regenerateFinalProduct,
+  isAIConfigured
 } from './services/geminiService';
 import { useAuth } from './lib/AuthContext';
 import { db } from './lib/firebase';
@@ -148,6 +149,15 @@ export default function App() {
   });
   
   const [isFirestoreLoading, setIsFirestoreLoading] = useState(true);
+  const [isAIReady, setIsAIReady] = useState<boolean>(true);
+
+  useEffect(() => {
+    const checkAI = async () => {
+      const ready = await isAIConfigured();
+      setIsAIReady(ready);
+    };
+    checkAI();
+  }, []);
   const [activeBlockId, setActiveBlockId] = useState<string>(blocks[0]?.id || '');
   const [isGenerating, setIsGenerating] = useState<string | null>(null);
   const [isEvaluating, setIsEvaluating] = useState<string | null>(null);
@@ -925,14 +935,39 @@ export default function App() {
       {/* Sidebar */}
       <aside className="w-full md:w-72 bg-white border-b md:border-b-0 md:border-r border-accent/20 flex flex-col">
         <div className="p-6 border-bottom border-gray-100">
-          <div className="flex items-center gap-3 mb-1">
-            <div className="w-10 h-10 bg-primary rounded-xl flex items-center justify-center shadow-lg shadow-primary/20 border border-accent/30">
-              <Sparkles className="w-5 h-5 text-accent" />
-            </div>
+          <div className="flex flex-col gap-4">
             <div className="flex flex-col">
-              <h1 className="text-xl font-bold tracking-tight serif text-primary italic">Kerygma</h1>
-              <p className="text-[9px] text-accent uppercase tracking-[0.3em] font-black">APP</p>
+              <h1 className="text-4xl font-bold tracking-tighter serif text-primary italic leading-none">Kerygma</h1>
+              <p className="text-4xl font-black tracking-tighter text-accent leading-none -mt-1">APP</p>
+              <p className="text-[10px] text-gray-400 font-bold leading-tight mt-2 max-w-[200px]">Planificador de SdAs de Religión Católica en Andalucía</p>
             </div>
+            
+            {!isAIReady && (
+              <div className="p-3 bg-amber-50 border border-amber-100 rounded-xl flex flex-col gap-2">
+                <div className="flex items-center gap-2 text-amber-600">
+                  <AlertCircle className="w-4 h-4" />
+                  <span className="text-[10px] font-bold uppercase tracking-widest">IA no configurada</span>
+                </div>
+                <p className="text-[10px] text-amber-500 leading-tight">
+                  Haz clic en el botón <b>Settings</b> (Ajustes) arriba a la derecha y añade tu clave en <b>VITE_GEMINI_API_KEY</b> para activar la IA.
+                </p>
+              </div>
+            )}
+            
+            {!user && (
+              <button 
+                onClick={() => login('google')}
+                disabled={!isFirebaseEnabled}
+                className={`w-full py-3 rounded-xl text-xs font-bold uppercase tracking-widest flex items-center justify-center gap-2 transition-all ${
+                  isFirebaseEnabled 
+                    ? 'bg-primary text-white hover:bg-primary/90 shadow-lg shadow-primary/20' 
+                    : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                }`}
+              >
+                <UserIcon className="w-4 h-4" />
+                Acceder con Google
+              </button>
+            )}
           </div>
         </div>
 
@@ -1008,7 +1043,7 @@ export default function App() {
         </nav>
 
         <div className="p-4 border-t border-gray-100 space-y-3">
-          {user ? (
+          {user && (
             <div className="flex items-center gap-3 p-2 bg-accent/5 rounded-xl border border-accent/10">
               {user.photoURL ? (
                 <img src={user.photoURL} alt={user.displayName || ''} className="w-8 h-8 rounded-full border border-accent/20" />
@@ -1027,30 +1062,6 @@ export default function App() {
                   Cerrar Sesión
                 </button>
               </div>
-            </div>
-          ) : (
-            <div className="flex flex-col gap-2">
-              <button 
-                onClick={() => login('google')}
-                disabled={!isFirebaseEnabled}
-                className={`w-full py-2.5 rounded-xl text-[10px] font-bold uppercase tracking-widest flex items-center justify-center gap-2 transition-all ${
-                  isFirebaseEnabled 
-                    ? 'bg-primary text-white hover:bg-primary/90' 
-                    : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                }`}
-              >
-                <UserIcon className="w-4 h-4" />
-                {isFirebaseEnabled ? 'Acceder con Google' : 'Acceder con Google'}
-              </button>
-              {isFirebaseEnabled && (
-                <button 
-                  onClick={() => login('github')}
-                  className="w-full py-2.5 rounded-xl text-[10px] font-bold uppercase tracking-widest flex items-center justify-center gap-2 transition-all bg-gray-900 text-white hover:bg-gray-800"
-                >
-                  <Github className="w-4 h-4" />
-                  Acceder con GitHub
-                </button>
-              )}
             </div>
           )}
 

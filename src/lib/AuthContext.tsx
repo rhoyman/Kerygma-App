@@ -33,7 +33,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = async (provider: 'google' | 'github' = 'google') => {
     if (!auth) throw new Error('Firebase no está configurado');
     const authProvider = provider === 'github' ? githubProvider : googleProvider;
-    await signInWithPopup(auth, authProvider);
+    try {
+      await signInWithPopup(auth, authProvider);
+    } catch (error: any) {
+      if (error.code === 'auth/popup-blocked') {
+        alert('El inicio de sesión ha sido bloqueado por el navegador. Por favor, permite las ventanas emergentes en este sitio para poder acceder.');
+      } else if (error.code === 'auth/cancelled-popup-request' || error.code === 'auth/popup-closed-by-user') {
+        // Silently handle if user just closed the popup
+        console.log('Login cancelled by user');
+      } else {
+        console.error('Error in login:', error);
+        alert('Error al iniciar sesión: ' + error.message);
+      }
+    }
   };
 
   const logout = async () => {

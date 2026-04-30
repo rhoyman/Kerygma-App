@@ -20,13 +20,14 @@ async function getAI() {
   // Try process.env next (shimmed by define)
   if (!apiKey || apiKey === 'undefined' || apiKey === 'null') {
     try {
-      apiKey = process.env.GEMINI_API_KEY as string;
+      apiKey = (process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY) as string;
     } catch (e) {
       // Ignore
     }
   }
 
   if (!apiKey || apiKey === 'undefined' || apiKey === 'null' || apiKey.trim() === '') {
+    console.warn("VITE_GEMINI_API_KEY no detectada. Por favor, asegúrate de configurar la clave bajo el nombre VITE_GEMINI_API_KEY en el menú 'Settings' (Ajustes) de AI Studio pronto.");
     return null;
   }
   
@@ -40,6 +41,11 @@ async function getAI() {
   }
 }
 
+export async function isAIConfigured(): Promise<boolean> {
+  const ai = await getAI();
+  return !!ai;
+}
+
 export async function suggestConcrecion(
   stage: string,
   level: string,
@@ -47,7 +53,7 @@ export async function suggestConcrecion(
   type: 'criterio' | 'saber'
 ): Promise<string> {
   const ai = await getAI();
-  if (!ai) return "La inteligencia artificial no está configurada.";
+  if (!ai) return "La inteligencia artificial no está configurada. Por favor, añade tu clave de API de Gemini bajo el nombre VITE_GEMINI_API_KEY en el botón 'Settings' (Ajustes) en la parte superior de la ventana de AI Studio.";
 
   const prompt = `Actúa como un experto en pedagogía de Religión Católica y currículo LOMLOE.
   Necesito concretar contenidos específicos para el aula basados en el siguiente ${type}:
@@ -146,7 +152,7 @@ export async function suggestUnitContent(
   extraContext?: string
 ): Promise<string> {
   const ai = await getAI();
-  if (!ai) return "La inteligencia artificial no está configurada.";
+  if (!ai) return "La inteligencia artificial no está configurada. Por favor, añade tu clave de API de Gemini bajo el nombre VITE_GEMINI_API_KEY en el botón 'Settings' (Ajustes) en la parte superior de la ventana de AI Studio.";
 
   const prompt = `Actúa como un experto pedagogo en Religión Católica.
   Basándote en los siguientes elementos curriculares seleccionados:
@@ -181,7 +187,7 @@ export async function generateSequencing(
   numSessions: number = 5
 ): Promise<{ activities: Activity[], finalProductTitle: string, finalProductDescription: string, finalProduct: string, justification: string }> {
   const ai = await getAI();
-  if (!ai) return { activities: [], finalProductTitle: "", finalProductDescription: "", finalProduct: "IA no configurada.", justification: "" };
+  if (!ai) return { activities: [], finalProductTitle: "", finalProductDescription: "", finalProduct: "IA no configurada. Por favor, añade tu clave de API de Gemini bajo el nombre VITE_GEMINI_API_KEY en el botón 'Settings' (Ajustes) en la parte superior de la ventana de AI Studio.", justification: "" };
 
   const prompt = `Como experto en diseño instruccional para Religión Católica, crea una propuesta completa para una Situación de Aprendizaje organizada en ${numSessions} sesiones.
   
@@ -307,7 +313,7 @@ export async function regenerateFinalProduct(
   productMode: string
 ): Promise<{ title: string, description: string }> {
   const ai = await getAI();
-  if (!ai) return { title: "", description: "IA no configurada." };
+  if (!ai) return { title: "", description: "IA no configurada. Por favor, añade tu clave de API de Gemini bajo el nombre VITE_GEMINI_API_KEY en el botón 'Settings' (Ajustes) en la parte superior de la ventana de AI Studio." };
 
   const prompt = `Como experto en diseño instruccional, propón un NUEVO producto final para esta situación de aprendizaje con un título motivador y una descripción detallada.
   
