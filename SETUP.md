@@ -18,4 +18,12 @@ Para que el login funcione:
 4. Copia el **Client ID** y **Secret** a tu consola de Firebase (Authentication > Sign-in method > GitHub).
 
 ## 3. Variables de Entorno
-Asegúrate de configurar las variables de `.env.example` en tu entorno de despliegue si usas funciones del lado del servidor (como las de Gemini si no son directas).
+Asegúrate de configurar las variables de `.env.example` en tu entorno de despliegue. Para Gemini, la variable es `VITE_GEMINI_API_KEY`.
+
+## 4. Autorizar Dominios en Firebase (CRÍTICO)
+Para que el login funcione en el entorno de desarrollo y en producción, debes añadir estos dominios en la **Consola de Firebase** > **Authentication** > **Settings** > **Authorized domains**:
+
+1. `localhost` (suele estar por defecto)
+2. `ais-dev-i65ykxqgyskx3je3nqp26l-397661432550.europe-west1.run.app` (URL de desarrollo)
+3. `ais-pre-i65ykxqgyskx3je3nqp26l-397661432550.europe-west1.run.app` (URL compartida)
+4. `<tu-usuario>.github.io` (Si usas GitHub Pages)
