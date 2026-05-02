@@ -942,14 +942,24 @@ export default function App() {
               <p className="text-[10px] text-gray-400 font-bold leading-tight mt-2 max-w-[200px]">Planificador de SdAs de Religión Católica en Andalucía</p>
             </div>
             
-            {!isAIReady && (
+            {isAIReady ? (
+              <div className="p-3 bg-green-50 border border-green-100 rounded-xl flex flex-col gap-2">
+                <div className="flex items-center gap-2 text-green-600">
+                  <Check className="w-4 h-4" />
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-[#22C55E]">IA Activa</span>
+                </div>
+                <p className="text-[10px] text-green-600/70 leading-tight">
+                  Clave de API detectada. Todas las funciones inteligentes están disponibles.
+                </p>
+              </div>
+            ) : (
               <div className="p-3 bg-amber-50 border border-amber-100 rounded-xl flex flex-col gap-2">
                 <div className="flex items-center gap-2 text-amber-600">
                   <AlertCircle className="w-4 h-4" />
-                  <span className="text-[10px] font-bold uppercase tracking-widest">IA no configurada</span>
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-[#D97706]">IA no detectada</span>
                 </div>
-                <p className="text-[10px] text-amber-500 leading-tight">
-                  La IA no detecta tu clave. Haz clic en <b>Settings</b> (icono de engranaje arriba a la derecha) y añade una variable llamada <b>VITE_GEMINI_API_KEY</b> con tu clave de API.
+                <p className="text-[10px] text-amber-600/70 leading-tight">
+                  Haz clic en <b>Settings</b> y añade <b>VITE_GEMINI_API_KEY</b> con tu clave.
                 </p>
               </div>
             )}

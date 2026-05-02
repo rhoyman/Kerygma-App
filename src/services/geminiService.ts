@@ -5,21 +5,51 @@
 
 import { Activity } from "../types";
 
+console.log("Gemini API service module loaded.");
+
 let aiClient: any = null;
 
 async function getAI() {
   if (aiClient) return aiClient;
   
-  // Use the variables injected by Vite's 'define'
-  let apiKey = (process.env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY || "").trim();
+  let apiKey = '';
+  
+  try {
+    // 1. Try standard Vite prefixed env var
+    if (import.meta.env.VITE_GEMINI_API_KEY) {
+      apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+    }
+  } catch (e) {
+    console.debug("Vite env not available");
+  }
+
+  // 2. Try process.env if defined
+  if (!apiKey) {
+    try {
+      apiKey = (process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || "") as string;
+    } catch (e) {
+      // process.env might not be defined
+    }
+  }
+
+  // 3. Last fallback to checking if it was defined at global scope
+  if (!apiKey) {
+    try {
+      apiKey = (window as any).GEMINI_API_KEY || (window as any).VITE_GEMINI_API_KEY || "";
+    } catch (e) {}
+  }
+
+  apiKey = typeof apiKey === 'string' ? apiKey.trim() : '';
 
   if (!apiKey || apiKey === 'undefined' || apiKey === 'null' || apiKey === '') {
+    console.warn("Gemini API: Key is missing. Please add VITE_GEMINI_API_KEY to Settings.");
     return null;
   }
   
   try {
     const { GoogleGenAI } = await import("@google/genai");
-    aiClient = new GoogleGenAI({ apiKey });
+    aiClient = new GoogleGenAI(apiKey);
+    console.log("Gemini API: Initialized successfully");
     return aiClient;
   } catch (err) {
     console.error("Gemini SDK initialization error:", err);
@@ -39,7 +69,7 @@ export async function suggestConcrecion(
   type: 'criterio' | 'saber'
 ): Promise<string> {
   const ai = await getAI();
-  if (!ai) return "La inteligencia artificial no está configurada. Por favor, añade tu clave de API de Gemini bajo el nombre VITE_GEMINI_API_KEY en el botón 'Settings' (Ajustes) en la parte superior de la ventana de AI Studio.";
+  if (!ai) return "IA no configurada. Añada su clave en Settings > VITE_GEMINI_API_KEY.";
 
   const prompt = `Actúa como un experto en pedagogía de Religión Católica y currículo LOMLOE.
   Necesito concretar contenidos específicos para el aula basados en el siguiente ${type}:
@@ -53,12 +83,10 @@ export async function suggestConcrecion(
   Responde con una lista corta y directa en español.`;
 
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: prompt,
-    });
-
-    return response.text ?? "No se pudo generar una sugerencia.";
+    const model = ai.getGenerativeModel({ model: "gemini-3-flash-preview" });
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    return response.text() ?? "No se pudo generar una sugerencia.";
   } catch (error) {
     console.error("Error generating suggestion:", error);
     return "Error al conectar con la IA.";
@@ -84,15 +112,12 @@ export async function evaluateLinks(
   Si ninguno es relevante, responde con la palabra "NINGUNO".`;
 
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: prompt,
-    });
-
-    const text = response.text?.trim() || "";
+    const model = ai.getGenerativeModel({ model: "gemini-3-flash-preview" });
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const text = response.text().trim() || "";
     if (text === "NINGUNO") return [];
     
-    // Parse the IDs from the response
     return text.split(',').map((id: string) => id.trim()).filter((id: string) => saberes.some((s: any) => s.id === id));
   } catch (error) {
     console.error("Error evaluating links:", error);
@@ -119,11 +144,10 @@ export async function suggestSaberesForCriteria(
   Selecciona solo los que sean realmente necesarios. Si ninguno es relevante, responde "NINGUNO".`;
 
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: prompt,
-    });
-    const text = response.text?.trim() || "";
+    const model = ai.getGenerativeModel({ model: "gemini-3-flash-preview" });
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const text = response.text().trim() || "";
     if (text === "NINGUNO") return [];
     return text.split(',').map((id: string) => id.trim()).filter((id: string) => id.length > 0);
   } catch (error) {
@@ -138,7 +162,7 @@ export async function suggestUnitContent(
   extraContext?: string
 ): Promise<string> {
   const ai = await getAI();
-  if (!ai) return "La inteligencia artificial no está configurada. Por favor, añade tu clave de API de Gemini bajo el nombre VITE_GEMINI_API_KEY en el botón 'Settings' (Ajustes) en la parte superior de la ventana de AI Studio.";
+  if (!ai) return "IA no configurada. Añada su clave en Settings > VITE_GEMINI_API_KEY.";
 
   const prompt = `Actúa como un experto pedagogo en Religión Católica.
   Basándote en los siguientes elementos curriculares seleccionados:
@@ -154,11 +178,10 @@ export async function suggestUnitContent(
   Responde con el texto propuesto directamente en un formato de lista claro.`;
 
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: prompt,
-    });
-    return response.text?.trim() || "No se ha podido generar contenido.";
+    const model = ai.getGenerativeModel({ model: "gemini-3-flash-preview" });
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    return response.text().trim() || "No se ha podido generar contenido.";
   } catch (error) {
     console.error("Error suggesting content:", error);
     return "Error al generar sugerencia de contenidos.";
@@ -173,7 +196,7 @@ export async function generateSequencing(
   numSessions: number = 5
 ): Promise<{ activities: Activity[], finalProductTitle: string, finalProductDescription: string, finalProduct: string, justification: string }> {
   const ai = await getAI();
-  if (!ai) return { activities: [], finalProductTitle: "", finalProductDescription: "", finalProduct: "IA no configurada. Por favor, añade tu clave en 'Settings' como VITE_GEMINI_API_KEY.", justification: "" };
+  if (!ai) return { activities: [], finalProductTitle: "", finalProductDescription: "", finalProduct: "IA no configurada. Añada su clave en Settings > VITE_GEMINI_API_KEY.", justification: "" };
 
   const prompt = `Como experto en diseño instruccional para Religión Católica, crea una propuesta completa para una Situación de Aprendizaje organizada en ${numSessions} sesiones.
   
@@ -218,12 +241,10 @@ export async function generateSequencing(
   Asegúrate de que los criterios de evaluación de cada actividad sean coherentes con el currículo oficial aportado. IMPORTANTE: En el campo "criteria" de cada actividad, incluye la descripción de los criterios de evaluación precedida por su código (ID). NO incluyas las competencias específicas.`;
 
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: prompt,
-    });
-    
-    const text = response.text?.trim() || "{}";
+    const model = ai.getGenerativeModel({ model: "gemini-3-flash-preview" });
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const text = response.text().trim() || "{}";
     const jsonStr = text.replace(/```json/g, "").replace(/```/g, "").trim();
     const data = JSON.parse(jsonStr);
     return {
@@ -278,11 +299,10 @@ export async function regenerateActivity(
   }`;
 
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: prompt,
-    });
-    const text = response.text?.trim() || "{}";
+    const model = ai.getGenerativeModel({ model: "gemini-3-flash-preview" });
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const text = response.text().trim() || "{}";
     const jsonStr = text.replace(/```json/g, "").replace(/```/g, "").trim();
     return JSON.parse(jsonStr);
   } catch (error) {
@@ -299,7 +319,7 @@ export async function regenerateFinalProduct(
   productMode: string
 ): Promise<{ title: string, description: string }> {
   const ai = await getAI();
-  if (!ai) return { title: "", description: "IA no configurada. Añádela en 'Settings' como VITE_GEMINI_API_KEY." };
+  if (!ai) return { title: "", description: "IA no configurada. Añádela en Settings > VITE_GEMINI_API_KEY." };
 
   const prompt = `Como experto en diseño instruccional, propón un NUEVO producto final para esta situación de aprendizaje con un título motivador y una descripción detallada.
   
@@ -315,11 +335,10 @@ export async function regenerateFinalProduct(
   }`;
 
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: prompt,
-    });
-    const text = response.text?.trim() || "{}";
+    const model = ai.getGenerativeModel({ model: "gemini-3-flash-preview" });
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const text = response.text().trim() || "{}";
     const jsonStr = text.replace(/```json/g, "").replace(/```/g, "").trim();
     const data = JSON.parse(jsonStr);
     return {
@@ -370,13 +389,10 @@ export async function analyzeExistingContent(
   Si algún elemento no tiene relación clara, no lo incluyas en los arrays correspondientes.`;
 
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: prompt,
-    });
-
-    const text = response.text?.trim() || "{}";
-    // Clean up potential markdown blocks if present
+    const model = ai.getGenerativeModel({ model: "gemini-3-flash-preview" });
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const text = response.text().trim() || "{}";
     const cleanJson = text.replace(/```json/g, "").replace(/```/g, "").trim();
     return JSON.parse(cleanJson);
   } catch (error) {
