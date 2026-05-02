@@ -150,17 +150,11 @@ export default function App() {
   
   const [isFirestoreLoading, setIsFirestoreLoading] = useState(true);
   const [isAIReady, setIsAIReady] = useState<boolean>(false);
-  const [aiDebugInfo, setAiDebugInfo] = useState<string>('');
 
   const checkAI = async () => {
     const ready = await isAIConfigured();
     setIsAIReady(ready);
-    
-    // Debug helper
-    const hasPEnv = !!(process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY);
-    const hasVEnv = !!(import.meta.env.VITE_GEMINI_API_KEY);
-    setAiDebugInfo(`pEnv: ${hasPEnv}, vEnv: ${hasVEnv}`);
-    console.log(`AI Configuration Status: Ready=${ready}, ${setAiDebugInfo}`);
+    console.log(`AI Status: ${ready ? 'Active' : 'Missing Key'}`);
   };
 
   useEffect(() => {
@@ -950,39 +944,23 @@ export default function App() {
               <p className="text-[10px] text-gray-400 font-bold leading-tight mt-2 max-w-[200px]">Planificador de SdAs de Religión Católica en Andalucía</p>
             </div>
             
-            {isAIReady ? (
-              <div className="p-3 bg-green-50 border border-green-100 rounded-xl flex flex-col gap-2">
-                <div className="flex items-center gap-2 text-green-600">
-                  <Check className="w-4 h-4" />
-                  <span className="text-[10px] font-bold uppercase tracking-widest text-[#22C55E]">IA Activa</span>
-                </div>
-                <p className="text-[10px] text-green-600/70 leading-tight">
-                  Clave de API detectada. Todas las funciones inteligentes están disponibles.
-                </p>
-              </div>
-            ) : (
+            {!isAIReady && (
               <div className="p-3 bg-amber-50 border border-amber-100 rounded-xl flex flex-col gap-2">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2 text-amber-600">
                     <AlertCircle className="w-4 h-4" />
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-[#D97706]">IA no detectada</span>
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-[#D97706]">IA Pendiente</span>
                   </div>
                   <button 
                     onClick={checkAI}
                     className="p-1 hover:bg-amber-100 rounded transition-colors text-amber-600"
-                    title="Reintentar detección"
                   >
                     <RotateCw className="w-3 h-3" />
                   </button>
                 </div>
-                <p className="text-[10px] text-amber-600/70 leading-tight">
-                  Haz clic en <b>Settings</b> y añade <b>VITE_GEMINI_API_KEY</b> con tu clave.
+                <p className="text-[9px] text-amber-600/70 leading-tight">
+                  Configura <b>VITE_GEMINI_API_KEY</b> en los ajustes de tu despliegue (Vercel/GitHub).
                 </p>
-                {aiDebugInfo && (
-                  <p className="text-[8px] font-mono text-amber-600/40 mt-1 uppercase tracking-tighter">
-                    Debug: {aiDebugInfo}
-                  </p>
-                )}
               </div>
             )}
             

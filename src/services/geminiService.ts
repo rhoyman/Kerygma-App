@@ -12,28 +12,34 @@ let aiClient: any = null;
 async function getAI() {
   if (aiClient) return aiClient;
   
-  // En AI Studio, la clave se mapea preferentemente a process.env.GEMINI_API_KEY
-  let apiKey = (process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || "") as string;
-  apiKey = apiKey.trim();
+  // Intentar obtener la clave de todas las fuentes posibles (Vite define, import.meta.env, etc.)
+  let apiKey = '';
+  
+  // 1. Intentar desde process.env (inyectado por vite.config.ts define)
+  try {
+    apiKey = (process.env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY || "") as string;
+  } catch (e) {}
 
-  // Limpieza de valores nulos o indefinidos que pueden venir de strings de entorno no configurados
+  // 2. Intentar desde import.meta.env (estándar de Vite)
+  if (!apiKey || apiKey === 'undefined' || apiKey === 'null' || apiKey.trim() === '') {
+    try {
+      apiKey = (import.meta.env.VITE_GEMINI_API_KEY || import.meta.env.GEMINI_API_KEY || "") as string;
+    } catch (e) {}
+  }
+
+  apiKey = apiKey ? apiKey.trim() : '';
+
   if (!apiKey || apiKey === 'undefined' || apiKey === 'null' || apiKey === '') {
-    // Intento final vía import.meta.env por si acaso
-    apiKey = (import.meta.env.VITE_GEMINI_API_KEY || "") as string;
-    if (!apiKey || apiKey === 'undefined' || apiKey === 'null' || apiKey === '') {
-      console.warn("Gemini API: No se encontró clave de API válida.");
-      return null;
-    }
+    return null;
   }
   
   try {
     const { GoogleGenAI } = await import("@google/genai");
-    // Inicialización siguiendo el patrón de AI Studio: objeto con propiedad apiKey
+    // Volvemos al formato de objeto que es el estándar de la SDK
     aiClient = new GoogleGenAI({ apiKey });
-    console.log("Gemini API: Inicializado correctamente.");
     return aiClient;
   } catch (err) {
-    console.error("Gemini SDK initialization error:", err);
+    console.error("Error al inicializar la SDK de Gemini:", err);
     return null;
   }
 }
