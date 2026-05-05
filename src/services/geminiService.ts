@@ -395,3 +395,97 @@ export async function analyzeExistingContent(
     return { ceIds: [], critIds: [], saberIds: [] };
   }
 }
+
+export async function generateEvaluationInstruments(
+  activities: { title: string, description: string }[],
+  content: string
+): Promise<{ instruments: { name: string, description: string, linkedActivitiesIds: string[], canvaPrompt: string }[] }> {
+  const ai = await getAI();
+  if (!ai) return { instruments: [] };
+
+  const prompt = `Actúa como un experto en evaluación educativa para Religión Católica.
+  Basándote en estas actividades de una situación de aprendizaje:
+  ${activities.map((a, i) => `Actividad ${i+1}: ${a.title}. ${a.description}`).join('\n')}
+  
+  Y estos contenidos: ${content}
+  
+  Propón 3-4 instrumentos de evaluación variados (ej: rúbrica de observación, diana de autoevaluación, portafolio digital, escala de estimación, cuestionario gamificado, etc.) que permitan evaluar el proceso y el producto final.
+  Para cada instrumento, detalla:
+  1. Nombre del instrumento.
+  2. Descripción de cómo se usa y qué evalúa exactamente.
+  3. Vinculación con las actividades (índices 0-indexados de la lista de actividades).
+  4. Un prompt o descripción técnica para poder generar este instrumento en una herramienta de diseño como Canva o similar.
+  
+  Responde ÚNICAMENTE con un objeto JSON:
+  {
+    "instruments": [
+      {
+        "name": "Nombre",
+        "description": "Descripción detallada",
+        "linkedActivitiesIds": ["0", "1"],
+        "canvaPrompt": "Descripción para crear el diseño del instrumento"
+      }
+    ]
+  }`;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: prompt,
+    });
+    const text = response.text?.trim() || "{}";
+    const cleanJson = text.replace(/```json/g, "").replace(/```/g, "").trim();
+    return JSON.parse(cleanJson);
+  } catch (error) {
+    console.error("Error generating evaluation:", error);
+    return { instruments: [] };
+  }
+}
+
+export async function generateDiversityMeasures(
+  activities: { title: string, description: string }[],
+  content: string,
+  needs: string
+): Promise<{ measures: { type: string, need: string, measure: string, methodologyAdjustments: string }[] }> {
+  const ai = await getAI();
+  if (!ai) return { measures: [] };
+
+  const prompt = `Actúa como especialista en Atención a la Diversidad y Religión Católica.
+  Tengo una situación de aprendizaje con estas actividades:
+  ${activities.map((a, i) => `Actividad ${i+1}: ${a.title}`).join('\n')}
+  
+  Y estas necesidades específicas identificadas por el docente: "${needs}"
+  
+  Propón medidas concretas de atención a la diversidad (DUA, adaptaciones no significativas, multinivel, etc.) adaptadas a estas necesidades para que todos los alumnos puedan alcanzar los objetivos.
+  
+  Detalla para cada medida:
+  1. Tipo (TEA, TDAH, Alta Capacidad, Discapacidad, Otro)
+  2. Necesidad específica
+  3. Medida concreta
+  4. Ajustes metodológicos específicos para las actividades mencionadas.
+  
+  Responde ÚNICAMENTE con un objeto JSON:
+  {
+    "measures": [
+      {
+        "type": "TEA | TDAH | Alta Capacidad | Discapacidad | Otro",
+        "need": "descripción de la necesidad",
+        "measure": "propuesta de medida",
+        "methodologyAdjustments": "ajustes en las actividades"
+      }
+    ]
+  }`;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: prompt,
+    });
+    const text = response.text?.trim() || "{}";
+    const cleanJson = text.replace(/```json/g, "").replace(/```/g, "").trim();
+    return JSON.parse(cleanJson);
+  } catch (error) {
+    console.error("Error generating diversity measures:", error);
+    return { measures: [] };
+  }
+}

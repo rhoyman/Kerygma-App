@@ -28,6 +28,32 @@ export interface UnitPlan {
   numberOfActivities?: number;
 }
 
+export interface EvaluationInstrument {
+  id: string;
+  name: string;
+  description: string;
+  linkedActivitiesIds: string[];
+  canvaPrompt?: string; 
+}
+
+export interface EvaluationSection {
+  instruments: EvaluationInstrument[];
+  generalCriteria?: string;
+}
+
+export interface DiversityMeasure {
+  id: string;
+  type: 'TEA' | 'TDAH' | 'Alta Capacidad' | 'Discapacidad' | 'Otro';
+  need: string;
+  measure: string;
+  methodologyAdjustments: string;
+}
+
+export interface DiversitySection {
+  measures: DiversityMeasure[];
+  generalObservations?: string;
+}
+
 export interface CurriculumBlock {
   id: string;
   userId?: string;
@@ -35,13 +61,15 @@ export interface CurriculumBlock {
   stage: 'Infantil' | 'Primaria' | 'Secundaria' | 'Bachillerato';
   level: string; 
   initialized?: boolean;
-  step: 'selection' | 'planning' | 'sequencing';
+  step: 'selection' | 'planning' | 'sequencing' | 'evaluation' | 'diversity';
   creationMode?: 'curriculum' | 'content';
   materials?: string; 
   competenciasEspecíficas: Competencia[];
   saberesBásicos: SaberBásico[];
   plan?: UnitPlan;
   activities?: Activity[];
+  evaluation?: EvaluationSection;
+  diversity?: DiversitySection;
 }
 
 export interface Competencia {

@@ -66,6 +66,8 @@ import {
   suggestSaberesForCriteria,
   regenerateActivity,
   regenerateFinalProduct,
+  generateEvaluationInstruments,
+  generateDiversityMeasures,
   isAIConfigured
 } from './services/geminiService';
 import { useAuth } from './lib/AuthContext';
@@ -176,7 +178,7 @@ export default function App() {
     const targetBlock = blockToExport || activeBlock;
     if (!targetBlock) return;
     
-    if (targetBlock.step !== 'sequencing') {
+    if (!targetBlock.activities || targetBlock.activities.length === 0) {
       alert("Debes completar la situación de aprendizaje hasta el paso de Secuenciación para exportar.");
       return;
     }
@@ -261,9 +263,35 @@ export default function App() {
       });
     }
 
+    if (block.evaluation && block.evaluation.instruments.length > 0) {
+      content += `## Evaluación\n\n`;
+      block.evaluation.instruments.forEach(inv => {
+        content += `### ${inv.name}\n`;
+        content += `${inv.description}\n`;
+        if (inv.linkedActivitiesIds.length > 0) {
+           content += `*Relacionado con: ${inv.linkedActivitiesIds.map(id => `Actividad ${Number(id)+1}`).join(', ')}*\n`;
+        }
+        content += `\n`;
+      });
+      if (block.evaluation.generalCriteria) {
+        content += `**Observaciones Generales de Evaluación:**\n${block.evaluation.generalCriteria}\n\n`;
+      }
+    }
+
+    if (block.diversity && block.diversity.measures.length > 0) {
+      content += `## Atención a la Diversidad\n\n`;
+      block.diversity.measures.forEach(m => {
+        content += `### [${m.type}] ${m.need}\n`;
+        content += `**Medida:** ${m.measure}\n`;
+        content += `**Ajustes Metodológicos:** ${m.methodologyAdjustments}\n\n`;
+      });
+      if (block.diversity.generalObservations) {
+        content += `**Observaciones Generales de Diversidad:**\n${block.diversity.generalObservations}\n\n`;
+      }
+    }
+
     return content;
   }
-
 
   const handleFirestoreError = (error: unknown, operationType: OperationType, path: string | null) => {
     const errInfo: FirestoreErrorInfo = {
@@ -932,6 +960,45 @@ export default function App() {
     setIsGenerating(null);
   };
 
+  const handleGenerateEvaluationAction = async () => {
+    if (!activeBlock || !activeBlock.activities || !activeBlock.plan) return;
+    setIsAnalyzing(true);
+    
+    const result = await generateEvaluationInstruments(
+      activeBlock.activities.map(a => ({ title: a.title, description: a.description })),
+      activeBlock.plan.suggestedContent
+    );
+    
+    updateBlock(activeBlock.id, { 
+      step: 'evaluation',
+      evaluation: {
+        instruments: result.instruments.map((ins, i) => ({ ...ins, id: `inst-${i}` })),
+        generalCriteria: ''
+      }
+    });
+    setIsAnalyzing(false);
+  };
+
+  const handleGenerateDiversityAction = async (needs: string) => {
+    if (!activeBlock || !activeBlock.activities || !activeBlock.plan) return;
+    setIsAnalyzing(true);
+    
+    const result = await generateDiversityMeasures(
+      activeBlock.activities.map(a => ({ title: a.title, description: a.description })),
+      activeBlock.plan.suggestedContent,
+      needs
+    );
+    
+    updateBlock(activeBlock.id, { 
+      step: 'diversity',
+      diversity: {
+        measures: result.measures.map((m, i) => ({ ...m, id: `div-${i}` }) as any),
+        generalObservations: `Necesidades atendidas: ${needs}`
+      }
+    });
+    setIsAnalyzing(false);
+  };
+
   const handleRegenerateFinalProductAction = async () => {
     if (!activeBlock || !activeBlock.plan) return;
     setIsAnalyzing(true);
@@ -1203,23 +1270,25 @@ export default function App() {
                     {[
                       { id: 'selection', label: '1. Currículo' },
                       { id: 'planning', label: '2. Propuesta' },
-                      { id: 'sequencing', label: '3. Aula' }
+                      { id: 'sequencing', label: '3. Aula' },
+                      { id: 'evaluation', label: '4. Evaluación' },
+                      { id: 'diversity', label: '5. Diversidad' }
                     ].map((s, idx) => (
                       <React.Fragment key={s.id}>
                         <button
                           onClick={() => {
-                            setStep(s.id as any);
+                            updateBlock(activeBlock.id, { step: s.id as any });
                             setIsMobileMenuOpen(false);
                           }}
                           className={`flex-1 md:flex-initial px-4 md:px-6 py-2 md:py-1.5 rounded-xl md:rounded-full text-[10px] font-bold uppercase tracking-widest transition-all whitespace-nowrap ${
                             activeBlock.step === s.id
-                              ? 'bg-primary text-white shadow-md shadow-primary/20 scale-[1.02]'
+                               ? 'bg-primary text-white shadow-md shadow-primary/20 scale-[1.02]'
                               : 'text-gray-400 hover:text-gray-600'
                           }`}
                         >
                           {s.label}
                         </button>
-                        {idx < 2 && <div className="hidden md:block w-px h-3 bg-gray-200 mx-1" />}
+                        {idx < 4 && <div className="hidden md:block w-px h-3 bg-gray-200 mx-1" />}
                       </React.Fragment>
                     ))}
                   </div>
@@ -1775,6 +1844,263 @@ export default function App() {
                     </motion.div>
                   ))}
                 </div>
+              </div>
+              
+              <div className="flex justify-center pt-8 border-t border-gray-100">
+                <button
+                  onClick={() => updateBlock(activeBlock.id, { step: 'evaluation' })}
+                  className="px-8 py-3 bg-primary text-white rounded-2xl font-bold uppercase tracking-widest hover:scale-105 transition-all shadow-lg shadow-primary/20 flex items-center gap-2"
+                >
+                  Continuar a Evaluación <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          ) : activeBlock.step === 'evaluation' ? (
+            <div className="max-w-4xl mx-auto space-y-12 py-8 pb-32">
+              <div className="space-y-4">
+                <div className="flex items-center gap-4">
+                  <button 
+                    onClick={() => updateBlock(activeBlock.id, { step: 'sequencing' })}
+                    className="p-2 hover:bg-gray-100 rounded-full text-gray-400"
+                  >
+                    <ChevronLeft className="w-6 h-6" />
+                  </button>
+                  <h2 className="text-4xl font-bold serif text-primary">Instrumentos de Evaluación</h2>
+                </div>
+                <p className="text-gray-500 text-lg">Concreción de herramientas para valorar el aprendizaje.</p>
+              </div>
+
+              {!activeBlock.evaluation?.instruments || activeBlock.evaluation.instruments.length === 0 ? (
+                <div className="bg-white rounded-[2.5rem] p-12 text-center space-y-6 border border-gray-100 shadow-xl shadow-gray-200/50">
+                  <div className="w-20 h-20 bg-accent/10 rounded-full flex items-center justify-center mx-auto">
+                    <ClipboardList className="w-10 h-10 text-accent" />
+                  </div>
+                  <div className="space-y-2">
+                    <h3 className="text-2xl font-bold text-primary">¿Cómo vamos a evaluar?</h3>
+                    <p className="text-gray-500 max-w-md mx-auto">La IA analizará tus actividades y te propondrá los mejores instrumentos para cada una.</p>
+                  </div>
+                  <button
+                    onClick={handleGenerateEvaluationAction}
+                    disabled={isAnalyzing}
+                    className="px-8 py-4 bg-accent text-white rounded-3xl font-bold text-lg hover:bg-accent/90 transition-all shadow-xl shadow-accent/20 flex items-center gap-3 mx-auto"
+                  >
+                    {isAnalyzing ? <Loader2 className="w-6 h-6 animate-spin" /> : <Sparkles className="w-6 h-6" />}
+                    <span>Diseñar Evaluación con IA</span>
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-8">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {activeBlock.evaluation.instruments.map((inv, idx) => (
+                      <motion.div
+                        key={inv.id}
+                        initial={{ opacity: 0, scale: 0.95 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        transition={{ delay: idx * 0.1 }}
+                        className="bg-white rounded-3xl border border-gray-100 p-6 shadow-xl shadow-gray-200/30 flex flex-col gap-4 group"
+                      >
+                        <div className="flex items-start justify-between">
+                          <div className="space-y-1 flex-1">
+                            <input 
+                              type="text"
+                              value={inv.name}
+                              onChange={(e) => {
+                                const newInst = [...activeBlock.evaluation!.instruments];
+                                newInst[idx].name = e.target.value;
+                                updateBlock(activeBlock.id, { evaluation: { ...activeBlock.evaluation!, instruments: newInst } });
+                              }}
+                              className="w-full bg-transparent border-none p-0 focus:ring-0 font-bold text-lg text-primary"
+                            />
+                            <div className="flex gap-1 flex-wrap">
+                              {inv.linkedActivitiesIds.map(actIdx => (
+                                <span key={actIdx} className="text-[8px] font-bold bg-primary/5 text-primary/60 px-1.5 py-0.5 rounded uppercase">
+                                  Act. {Number(actIdx) + 1}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                          <button 
+                             onClick={() => {
+                               const newInst = activeBlock.evaluation!.instruments.filter((_, i) => i !== idx);
+                               updateBlock(activeBlock.id, { evaluation: { ...activeBlock.evaluation!, instruments: newInst } });
+                             }}
+                             className="p-2 text-gray-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                        
+                        <AutoResizeTextArea
+                          value={inv.description}
+                          onChange={(e) => {
+                            const newInst = [...activeBlock.evaluation!.instruments];
+                            newInst[idx].description = e.target.value;
+                            updateBlock(activeBlock.id, { evaluation: { ...activeBlock.evaluation!, instruments: newInst } });
+                          }}
+                          className="text-sm text-gray-600 leading-relaxed bg-transparent border-none p-0 focus:ring-0"
+                        />
+
+                        {inv.canvaPrompt && (
+                          <div className="mt-auto pt-4 border-t border-gray-50 flex items-center justify-between gap-3">
+                            <div className="flex-1 overflow-hidden">
+                              <p className="text-[9px] font-bold text-accent uppercase tracking-widest mb-1 flex items-center gap-1">
+                                <Sparkles className="w-3 h-3" /> Exportar descripción a Canva
+                              </p>
+                              <p className="text-[10px] text-gray-400 truncate">{inv.canvaPrompt}</p>
+                            </div>
+                            <button
+                              onClick={() => {
+                                navigator.clipboard.writeText(inv.canvaPrompt || '');
+                                setCopiedId(inv.id);
+                                setTimeout(() => setCopiedId(null), 2000);
+                              }}
+                              className="shrink-0 p-2 bg-gray-50 hover:bg-accent/10 hover:text-accent rounded-xl transition-all"
+                              title="Copiar prompt para Canva"
+                            >
+                              {copiedId === inv.id ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
+                            </button>
+                          </div>
+                        )}
+                      </motion.div>
+                    ))}
+                    
+                    <button
+                      onClick={() => {
+                        const newInst = [...(activeBlock.evaluation?.instruments || []), {
+                          id: `inst-new-${Date.now()}`,
+                          name: 'Nuevo Instrumento',
+                          description: 'Describe cómo vas a evaluar...',
+                          linkedActivitiesIds: []
+                        }];
+                        updateBlock(activeBlock.id, { evaluation: { ...(activeBlock.evaluation || { instruments: [] }), instruments: newInst } });
+                      }}
+                      className="border-2 border-dashed border-gray-200 rounded-3xl p-6 flex flex-col items-center justify-center gap-3 text-gray-400 hover:border-accent hover:text-accent transition-all"
+                    >
+                      <Plus className="w-8 h-8" />
+                      <span className="font-bold text-xs uppercase tracking-widest">Añadir Instrumento</span>
+                    </button>
+                  </div>
+                  
+                  <div className="bg-white rounded-3xl border border-gray-100 p-8 shadow-xl shadow-gray-200/30 space-y-4">
+                    <div className="flex items-center gap-2 text-primary">
+                      <Target className="w-5 h-5" />
+                      <h3 className="font-bold uppercase text-[11px] tracking-widest">Observaciones Generales de Evaluación</h3>
+                    </div>
+                    <AutoResizeTextArea
+                      value={activeBlock.evaluation?.generalCriteria || ''}
+                      onChange={(e) => updateBlock(activeBlock.id, { evaluation: { ...activeBlock.evaluation!, generalCriteria: e.target.value } })}
+                      className="w-full text-sm text-gray-600 leading-relaxed bg-transparent border-none p-0 focus:ring-0"
+                      placeholder="Indica criterios generales, porcentajes o ponderaciones si es necesario..."
+                    />
+                  </div>
+
+                  <div className="flex justify-center pt-8">
+                    <button
+                      onClick={() => updateBlock(activeBlock.id, { step: 'diversity' })}
+                      className="px-8 py-3 bg-primary text-white rounded-2xl font-bold uppercase tracking-widest hover:scale-105 transition-all shadow-lg shadow-primary/20 flex items-center gap-2"
+                    >
+                      Continuar a Diversidad <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : activeBlock.step === 'diversity' ? (
+            <div className="max-w-4xl mx-auto space-y-12 py-8 pb-32">
+              <div className="space-y-4">
+                <div className="flex items-center gap-4">
+                  <button 
+                    onClick={() => updateBlock(activeBlock.id, { step: 'evaluation' })}
+                    className="p-2 hover:bg-gray-100 rounded-full text-gray-400"
+                  >
+                    <ChevronLeft className="w-6 h-6" />
+                  </button>
+                  <h2 className="text-4xl font-bold serif text-primary">Atención a la Diversidad</h2>
+                </div>
+                <p className="text-gray-500 text-lg">Personalizamos el aprendizaje para no dejar a nadie atrás.</p>
+              </div>
+
+              <div className="bg-white rounded-[2.5rem] p-8 space-y-6 border border-gray-100 shadow-xl shadow-gray-200/50">
+                <div className="space-y-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-primary/5 rounded-2xl flex items-center justify-center text-primary">
+                      <Users className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-primary">Necesidades del Aula</h3>
+                      <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Describe quién necesita apoyo especial</p>
+                    </div>
+                  </div>
+                  
+                  <div className="relative">
+                    <textarea 
+                      placeholder="Ej: Un alumno con TEA con alta funcionalidad, dos alumnos con TDAH y una alumna con altas capacidades..."
+                      value={activeBlock.diversity?.generalObservations || ''}
+                      onChange={(e) => updateBlock(activeBlock.id, { diversity: { ...activeBlock.diversity!, generalObservations: e.target.value } })}
+                      className="w-full h-32 p-6 bg-gray-50 rounded-3xl border-none focus:ring-2 focus:ring-primary/20 text-sm leading-relaxed"
+                    />
+                  </div>
+                  
+                  <button
+                    onClick={() => handleGenerateDiversityAction(activeBlock.diversity?.generalObservations || '')}
+                    disabled={isAnalyzing || !activeBlock.diversity?.generalObservations}
+                    className="w-full py-4 bg-primary text-white rounded-3xl font-bold text-lg hover:bg-primary/90 transition-all shadow-xl shadow-primary/20 flex items-center justify-center gap-3"
+                  >
+                    {isAnalyzing ? <Loader2 className="w-6 h-6 animate-spin" /> : <Sparkles className="w-6 h-6" />}
+                    <span>Generar Medidas Específicas</span>
+                  </button>
+                </div>
+
+                {activeBlock.diversity?.measures && activeBlock.diversity.measures.length > 0 && (
+                  <div className="space-y-6 pt-6 border-t border-gray-50">
+                    <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest text-center">Propuestas de Intervención</h4>
+                    <div className="grid grid-cols-1 gap-4">
+                      {activeBlock.diversity.measures.map((measure, idx) => (
+                        <motion.div
+                          key={measure.id}
+                          initial={{ opacity: 0, x: -10 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ delay: idx * 0.1 }}
+                          className="bg-gray-50 rounded-2xl p-6 border border-gray-100 flex flex-col gap-3"
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <span className="px-3 py-1 bg-primary text-[9px] font-bold text-white rounded-lg uppercase tracking-widest">
+                                {measure.type}
+                              </span>
+                              <span className="text-[10px] font-bold text-gray-400 uppercase">
+                                {measure.need}
+                              </span>
+                            </div>
+                          </div>
+                          
+                          <div className="space-y-2">
+                            <p className="text-sm font-bold text-primary">Medida propuesta:</p>
+                            <p className="text-sm text-gray-600 leading-relaxed">{measure.measure}</p>
+                          </div>
+                          
+                          <div className="p-4 bg-white/50 rounded-xl border border-white/50">
+                            <p className="text-[10px] font-bold text-accent uppercase tracking-widest mb-1 flex items-center gap-1">
+                              <Compass className="w-3 h-3" /> Ajustes Metodológicos
+                            </p>
+                            <p className="text-xs text-gray-500 leading-relaxed italic">{measure.methodologyAdjustments}</p>
+                          </div>
+                        </motion.div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+              
+              <div className="flex justify-center pt-8">
+                <button
+                  onClick={() => handleExport()}
+                  disabled={isExporting}
+                  className="px-12 py-4 bg-primary text-white rounded-[2rem] font-bold text-xl hover:scale-105 transition-all shadow-2xl shadow-primary/30 flex items-center gap-3"
+                >
+                  <Download className="w-6 h-6" />
+                  <span>Finalizar y Exportar SdA</span>
+                </button>
               </div>
             </div>
           ) : activeBlock.step === 'selection' ? (
