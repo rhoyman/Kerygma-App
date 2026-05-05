@@ -49,7 +49,24 @@ import { CurriculumBlock, Competencia, SaberBásico, Criterio, Activity, UnitPla
 import { DEFAULT_CURRICULUM } from './data/curriculumDefaults';
 import { 
   STAGE_LEVELS, 
+  COMPETENCIAS_INFANTIL,
+  CRITERIOS_INFANTIL_3ANOS,
+  CRITERIOS_INFANTIL_4ANOS,
+  CRITERIOS_INFANTIL_5ANOS,
+  SABERES_INFANTIL,
+  COMPETENCIAS_PRIMARIA,
+  CRITERIOS_PRIMARIA_1,
+  CRITERIOS_PRIMARIA_2,
+  CRITERIOS_PRIMARIA_3,
+  CRITERIOS_PRIMARIA_4,
+  CRITERIOS_PRIMARIA_5,
+  CRITERIOS_PRIMARIA_6,
+  SABERES_PRIMARIA_1_2,
+  SABERES_PRIMARIA_3_4,
+  SABERES_PRIMARIA_5_6,
+  SABERES_BACHILLERATO,
   COMPETENCIAS_ESO, 
+  COMPETENCIAS_BACHILLERATO,
   CRITERIOS_ESO_1, 
   CRITERIOS_ESO_2,
   CRITERIOS_ESO_3,
@@ -460,19 +477,37 @@ export default function App() {
     try {
       // Prepare curriculum context for AI
       const context = {
-        competencias: COMPETENCIAS_ESO.map(ce => {
-          let criteria: Criterio[] = [];
-          if (activeBlock.level === '1º ESO') criteria = CRITERIOS_ESO_1[ce.id] || [];
-          else if (activeBlock.level === '2º ESO') criteria = CRITERIOS_ESO_2[ce.id] || [];
-          else if (activeBlock.level === '3º ESO') criteria = CRITERIOS_ESO_3[ce.id] || [];
-          else if (activeBlock.level === '4º ESO') criteria = CRITERIOS_ESO_4[ce.id] || [];
-          
-          return { id: ce.id, description: ce.description, criterios: criteria };
-        }),
-        saberes: (activeBlock.level === '1º ESO' || activeBlock.level === '2º ESO') 
-          ? SABERES_ESO_1_2 
-          : (activeBlock.level === '3º ESO' || activeBlock.level === '4º ESO')
-            ? SABERES_ESO_3_4
+        competencias: (activeBlock.stage === 'Secundaria' ? COMPETENCIAS_ESO : activeBlock.stage === 'Bachillerato' ? COMPETENCIAS_BACHILLERATO : activeBlock.stage === 'Infantil' ? COMPETENCIAS_INFANTIL : activeBlock.stage === 'Primaria' ? COMPETENCIAS_PRIMARIA : [])
+          .map(ce => {
+            let criteria: Criterio[] = [];
+            if (activeBlock.stage === 'Secundaria') {
+              if (activeBlock.level === '1º ESO') criteria = CRITERIOS_ESO_1[ce.id] || [];
+              else if (activeBlock.level === '2º ESO') criteria = CRITERIOS_ESO_2[ce.id] || [];
+              else if (activeBlock.level === '3º ESO') criteria = CRITERIOS_ESO_3[ce.id] || [];
+              else if (activeBlock.level === '4º ESO') criteria = CRITERIOS_ESO_4[ce.id] || [];
+            } else if (activeBlock.stage === 'Infantil') {
+              if (activeBlock.level === '3 años') criteria = CRITERIOS_INFANTIL_3ANOS[ce.id] || [];
+              else if (activeBlock.level === '4 años') criteria = CRITERIOS_INFANTIL_4ANOS[ce.id] || [];
+              else if (activeBlock.level === '5 años') criteria = CRITERIOS_INFANTIL_5ANOS[ce.id] || [];
+            } else if (activeBlock.stage === 'Primaria') {
+              if (activeBlock.level === '1º Primaria') criteria = CRITERIOS_PRIMARIA_1[ce.id] || [];
+              else if (activeBlock.level === '2º Primaria') criteria = CRITERIOS_PRIMARIA_2[ce.id] || [];
+              else if (activeBlock.level === '3º Primaria') criteria = CRITERIOS_PRIMARIA_3[ce.id] || [];
+              else if (activeBlock.level === '4º Primaria') criteria = CRITERIOS_PRIMARIA_4[ce.id] || [];
+              else if (activeBlock.level === '5º Primaria') criteria = CRITERIOS_PRIMARIA_5[ce.id] || [];
+              else if (activeBlock.level === '6º Primaria') criteria = CRITERIOS_PRIMARIA_6[ce.id] || [];
+            }
+            
+            return { id: ce.id, description: ce.description, criterios: criteria };
+          }),
+        saberes: activeBlock.stage === 'Secundaria' 
+          ? ((activeBlock.level === '1º ESO' || activeBlock.level === '2º ESO') ? SABERES_ESO_1_2 : SABERES_ESO_3_4)
+          : activeBlock.stage === 'Infantil'
+            ? SABERES_INFANTIL
+            : activeBlock.stage === 'Primaria'
+            ? (activeBlock.level === '1º Primaria' || activeBlock.level === '2º Primaria' ? SABERES_PRIMARIA_1_2 : activeBlock.level === '3º Primaria' || activeBlock.level === '4º Primaria' ? SABERES_PRIMARIA_3_4 : activeBlock.level === '5º Primaria' || activeBlock.level === '6º Primaria' ? SABERES_PRIMARIA_5_6 : [])
+            : activeBlock.stage === 'Bachillerato'
+            ? SABERES_BACHILLERATO
             : []
       };
 
@@ -482,15 +517,30 @@ export default function App() {
       setBlocks(prev => prev.map(b => {
         if (b.id !== activeBlock.id) return b;
         
+        const currentCompetencias = activeBlock.stage === 'Secundaria' ? COMPETENCIAS_ESO : activeBlock.stage === 'Infantil' ? COMPETENCIAS_INFANTIL : activeBlock.stage === 'Primaria' ? COMPETENCIAS_PRIMARIA : [];
+
         const updated = {
           ...b,
-          competenciasEspecíficas: COMPETENCIAS_ESO
+          competenciasEspecíficas: currentCompetencias
             .map(ce => {
               let allCriteria: Criterio[] = [];
-              if (activeBlock.level === '1º ESO') allCriteria = CRITERIOS_ESO_1[ce.id] || [];
-              else if (activeBlock.level === '2º ESO') allCriteria = CRITERIOS_ESO_2[ce.id] || [];
-              else if (activeBlock.level === '3º ESO') allCriteria = CRITERIOS_ESO_3[ce.id] || [];
-              else if (activeBlock.level === '4º ESO') allCriteria = CRITERIOS_ESO_4[ce.id] || [];
+              if (activeBlock.stage === 'Secundaria') {
+                if (activeBlock.level === '1º ESO') allCriteria = CRITERIOS_ESO_1[ce.id] || [];
+                else if (activeBlock.level === '2º ESO') allCriteria = CRITERIOS_ESO_2[ce.id] || [];
+                else if (activeBlock.level === '3º ESO') allCriteria = CRITERIOS_ESO_3[ce.id] || [];
+                else if (activeBlock.level === '4º ESO') allCriteria = CRITERIOS_ESO_4[ce.id] || [];
+              } else if (activeBlock.stage === 'Infantil') {
+                if (activeBlock.level === '3 años') allCriteria = CRITERIOS_INFANTIL_3ANOS[ce.id] || [];
+                else if (activeBlock.level === '4 años') allCriteria = CRITERIOS_INFANTIL_4ANOS[ce.id] || [];
+                else if (activeBlock.level === '5 años') allCriteria = CRITERIOS_INFANTIL_5ANOS[ce.id] || [];
+              } else if (activeBlock.stage === 'Primaria') {
+                if (activeBlock.level === '1º Primaria') allCriteria = CRITERIOS_PRIMARIA_1[ce.id] || [];
+                else if (activeBlock.level === '2º Primaria') allCriteria = CRITERIOS_PRIMARIA_2[ce.id] || [];
+                else if (activeBlock.level === '3º Primaria') allCriteria = CRITERIOS_PRIMARIA_3[ce.id] || [];
+                else if (activeBlock.level === '4º Primaria') allCriteria = CRITERIOS_PRIMARIA_4[ce.id] || [];
+                else if (activeBlock.level === '5º Primaria') allCriteria = CRITERIOS_PRIMARIA_5[ce.id] || [];
+                else if (activeBlock.level === '6º Primaria') allCriteria = CRITERIOS_PRIMARIA_6[ce.id] || [];
+              }
               
               return {
                 ...ce,
@@ -618,6 +668,33 @@ export default function App() {
     updateBlock(blockId, { stage: stage as any, level: defaultLevel });
   };
 
+  const handleExportCurriculumCSV = () => {
+    // Generate CSV for ESO as requested
+    let csv = "Etapa;Competencia_ID;Competencia_Desc;Criterio_ID;Criterio_Desc;Nivel\n";
+    
+    COMPETENCIAS_ESO.forEach(ce => {
+      const levels = ["1º ESO", "2º ESO", "3º ESO", "4º ESO"];
+      const criteriaMaps = [CRITERIOS_ESO_1, CRITERIOS_ESO_2, CRITERIOS_ESO_3, CRITERIOS_ESO_4];
+      
+      levels.forEach((lvl, idx) => {
+        const criteria = criteriaMaps[idx][ce.id] || [];
+        criteria.forEach(crit => {
+          csv += `Secundaria;"${ce.id}";"${ce.description.replace(/"/g, '""')}";"${crit.id}";"${crit.description.replace(/"/g, '""')}";"${lvl}"\n`;
+        });
+      });
+    });
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement("a");
+    const url = URL.createObjectURL(blob);
+    link.setAttribute("href", url);
+    link.setAttribute("download", "curriculo_religion_eso.csv");
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const handleLevelChange = (blockId: string, level: string) => {
     updateBlock(blockId, { level });
   };
@@ -665,6 +742,81 @@ export default function App() {
         updates.saberesBásicos = SABERES_ESO_1_2;
       } else if (level === '3º ESO' || level === '4º ESO') {
         updates.saberesBásicos = SABERES_ESO_3_4;
+      } else {
+        updates.saberesBásicos = [];
+      }
+    } else if (stage === 'Infantil') {
+      if (level === '3 años') {
+        updates.competenciasEspecíficas = COMPETENCIAS_INFANTIL.map(ce => ({
+          ...ce,
+          criteriosEvaluación: CRITERIOS_INFANTIL_3ANOS[ce.id] || []
+        }));
+      } else if (level === '4 años') {
+        updates.competenciasEspecíficas = COMPETENCIAS_INFANTIL.map(ce => ({
+          ...ce,
+          criteriosEvaluación: CRITERIOS_INFANTIL_4ANOS[ce.id] || []
+        }));
+      } else if (level === '5 años') {
+        updates.competenciasEspecíficas = COMPETENCIAS_INFANTIL.map(ce => ({
+          ...ce,
+          criteriosEvaluación: CRITERIOS_INFANTIL_5ANOS[ce.id] || []
+        }));
+      } else {
+        updates.competenciasEspecíficas = COMPETENCIAS_INFANTIL.map(ce => ({
+          ...ce,
+          criteriosEvaluación: []
+        }));
+      }
+      updates.saberesBásicos = SABERES_INFANTIL;
+    } else if (stage === 'Bachillerato') {
+      updates.competenciasEspecíficas = COMPETENCIAS_BACHILLERATO.map(ce => ({
+        ...ce,
+        criteriosEvaluación: []
+      }));
+      updates.saberesBásicos = SABERES_BACHILLERATO;
+    } else if (stage === 'Primaria') {
+      if (level === '1º Primaria') {
+        updates.competenciasEspecíficas = COMPETENCIAS_PRIMARIA.map(ce => ({
+          ...ce,
+          criteriosEvaluación: CRITERIOS_PRIMARIA_1[ce.id] || []
+        }));
+      } else if (level === '2º Primaria') {
+        updates.competenciasEspecíficas = COMPETENCIAS_PRIMARIA.map(ce => ({
+          ...ce,
+          criteriosEvaluación: CRITERIOS_PRIMARIA_2[ce.id] || []
+        }));
+      } else if (level === '3º Primaria') {
+        updates.competenciasEspecíficas = COMPETENCIAS_PRIMARIA.map(ce => ({
+          ...ce,
+          criteriosEvaluación: CRITERIOS_PRIMARIA_3[ce.id] || []
+        }));
+      } else if (level === '4º Primaria') {
+        updates.competenciasEspecíficas = COMPETENCIAS_PRIMARIA.map(ce => ({
+          ...ce,
+          criteriosEvaluación: CRITERIOS_PRIMARIA_4[ce.id] || []
+        }));
+      } else if (level === '5º Primaria') {
+        updates.competenciasEspecíficas = COMPETENCIAS_PRIMARIA.map(ce => ({
+          ...ce,
+          criteriosEvaluación: CRITERIOS_PRIMARIA_5[ce.id] || []
+        }));
+      } else if (level === '6º Primaria') {
+        updates.competenciasEspecíficas = COMPETENCIAS_PRIMARIA.map(ce => ({
+          ...ce,
+          criteriosEvaluación: CRITERIOS_PRIMARIA_6[ce.id] || []
+        }));
+      } else {
+        updates.competenciasEspecíficas = COMPETENCIAS_PRIMARIA.map(ce => ({
+          ...ce,
+          criteriosEvaluación: []
+        }));
+      }
+      if (level === '1º Primaria' || level === '2º Primaria') {
+        updates.saberesBásicos = SABERES_PRIMARIA_1_2;
+      } else if (level === '3º Primaria' || level === '4º Primaria') {
+        updates.saberesBásicos = SABERES_PRIMARIA_3_4;
+      } else if (level === '5º Primaria' || level === '6º Primaria') {
+        updates.saberesBásicos = SABERES_PRIMARIA_5_6;
       } else {
         updates.saberesBásicos = [];
       }
