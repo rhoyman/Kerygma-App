@@ -76,6 +76,7 @@ import {
   where, 
   onSnapshot, 
   setDoc, 
+  getDocs,
   doc, 
   deleteDoc,
   serverTimestamp 
@@ -149,6 +150,7 @@ export default function App() {
   });
   
   const [isFirestoreLoading, setIsFirestoreLoading] = useState(true);
+  const [isSyncing, setIsSyncing] = useState(false);
   const [isAIReady, setIsAIReady] = useState<boolean>(false);
 
   const checkAI = async () => {
@@ -300,14 +302,47 @@ export default function App() {
     }
     
     setIsFirestoreLoading(true);
-    // Clear current state to show only cloud data
-    setBlocks([]);
     
+    // First, fetch current cloud data
     const q = query(collection(db, 'situations'), where('userId', '==', user.uid));
+    
+    // We'll use getDocs once to see if we need to migrate local data
+    const checkMigration = async () => {
+      try {
+        const snapshot = await getDocs(q);
+        const cloudBlocks = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as CurriculumBlock));
+        
+        // If cloud blocks exist, we only sync local ones that are missing
+        const localSaved = localStorage.getItem('kerygma_blocks');
+        if (localSaved) {
+          const localBlocks: CurriculumBlock[] = JSON.parse(localSaved);
+          // Only sync if they are meaningful (not just some leftover defaults)
+          const meaningfulBlocks = localBlocks.filter(b => b.initialized || b.title);
+          
+          for (const block of meaningfulBlocks) {
+            // Ensure ID doesn't collide with other users if it was a default
+            const isDefault = block.id.startsWith('primaria-') || block.id.startsWith('infantil-') || block.id.startsWith('secundaria-') || block.id.startsWith('bach-');
+            const safeId = isDefault && !block.id.includes(user.uid.slice(0, 5))
+              ? `${block.id}-${user.uid.slice(0, 5)}` 
+              : block.id;
+            
+            // Sync if not in cloud
+            if (!cloudBlocks.find(cb => cb.id === safeId)) {
+              await syncBlock({ ...block, id: safeId, userId: user.uid });
+            }
+          }
+        }
+      } catch (e) {
+        console.error("Migration error:", e);
+      }
+    };
+
+    checkMigration();
+
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const remoteBlocks = snapshot.docs.map(doc => {
         const data = doc.data() as CurriculumBlock;
-        return { ...data, id: doc.id }; // Ensure ID consistency
+        return { ...data, id: doc.id };
       });
       
       setBlocks(remoteBlocks);
@@ -331,9 +366,9 @@ export default function App() {
     return () => unsubscribe();
   }, [user, db]);
 
-  // Save to Firestore helper
   const syncBlock = async (block: CurriculumBlock) => {
     if (!user || !db) return;
+    setIsSyncing(true);
     
     // Sanitize data recursively to remove undefined values which Firestore doesn't like
     const sanitize = (obj: any): any => {
@@ -368,6 +403,8 @@ export default function App() {
       await setDoc(doc(db, 'situations', sanitizedBlock.id), sanitizedBlock, { merge: true });
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, `situations/${block.id}`);
+    } finally {
+      setIsSyncing(false);
     }
   };
 
@@ -517,9 +554,34 @@ export default function App() {
   };
 
   const updateBlock = (blockId: string, updates: Partial<CurriculumBlock>) => {
-    setBlocks(prev => prev.map(b => b.id === blockId ? { ...b, ...updates } : b));
-    const block = blocks.find(b => b.id === blockId);
-    if (block) syncBlock({ ...block, ...updates });
+    setBlocks(prev => {
+      const block = prev.find(b => b.id === blockId);
+      if (!block) return prev;
+
+      let targetId = blockId;
+      // If it's a legacy/default ID and we are logged in, migrate it to a user-owned ID
+      const isDefault = blockId.startsWith('primaria-') || blockId.startsWith('infantil-') || blockId.startsWith('secundaria-') || blockId.startsWith('bach-');
+      if (user && isDefault && !blockId.includes(user.uid.slice(0, 5))) {
+        targetId = `${blockId}-${user.uid.slice(0, 5)}`;
+      }
+
+      const updated = { ...block, ...updates, id: targetId };
+      
+      // Update local state
+      const next = prev.map(b => b.id === blockId ? updated : b);
+      
+      // Sync to cloud
+      syncBlock(updated);
+      
+      // Handle active state if ID changed
+      if (targetId !== blockId && activeBlockId === blockId) {
+        // Use a timeout or next tick to avoid state update during render if needed, 
+        // but here it's fine as it's inside a handler
+        setTimeout(() => setActiveBlockId(targetId), 0);
+      }
+      
+      return next;
+    });
   };
 
   const handleStageChange = (blockId: string, stage: string) => {
@@ -978,6 +1040,42 @@ export default function App() {
                 Acceder con Google
               </button>
             )}
+
+            {user && (
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center gap-3 p-2 bg-accent/5 rounded-xl border border-accent/10">
+                  {user.photoURL ? (
+                    <img src={user.photoURL} alt={user.displayName || ''} className="w-8 h-8 rounded-full border border-accent/20" />
+                  ) : (
+                    <div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center text-white">
+                      <UserIcon className="w-4 h-4" />
+                    </div>
+                  )}
+                  <div className="flex-1 overflow-hidden">
+                    <div className="flex items-center justify-between">
+                      <p className="text-[10px] font-bold text-primary truncate">{user.displayName || user.email}</p>
+                      {isSyncing ? (
+                        <Loader2 className="w-2.5 h-2.5 animate-spin text-accent" />
+                      ) : (
+                        <div className="w-1.5 h-1.5 bg-green-500 rounded-full" />
+                      )}
+                    </div>
+                    <button 
+                      onClick={() => logout()}
+                      className="text-[9px] text-accent font-bold uppercase tracking-widest hover:underline flex items-center gap-1 mt-0.5"
+                    >
+                      <LogOut className="w-3 h-3" />
+                      Cerrar Sesión
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-center gap-2 text-[9px] text-green-600 font-bold uppercase tracking-widest bg-green-50/50 py-1 rounded-lg border border-green-100/50">
+                  <Save className="w-2.5 h-2.5" />
+                  <span>Sincronizado en la nube</span>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -1052,35 +1150,9 @@ export default function App() {
           </button>
         </nav>
 
-        <div className="p-4 border-t border-gray-100 space-y-3">
-          {user && (
-            <div className="flex items-center gap-3 p-2 bg-accent/5 rounded-xl border border-accent/10">
-              {user.photoURL ? (
-                <img src={user.photoURL} alt={user.displayName || ''} className="w-8 h-8 rounded-full border border-accent/20" />
-              ) : (
-                <div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center text-white">
-                  <UserIcon className="w-4 h-4" />
-                </div>
-              )}
-              <div className="flex-1 overflow-hidden">
-                <p className="text-[10px] font-bold text-primary truncate">{user.displayName || user.email}</p>
-                <button 
-                  onClick={() => logout()}
-                  className="text-[9px] text-accent font-bold uppercase tracking-widest hover:underline flex items-center gap-1"
-                >
-                  <LogOut className="w-3 h-3" />
-                  Cerrar Sesión
-                </button>
-              </div>
-            </div>
-          )}
-
+        <div className="p-4 border-t border-gray-100">
           <div className="flex flex-col items-center gap-1">
-            <div className="flex items-center justify-center gap-2 text-[10px] text-green-600 font-bold uppercase tracking-widest">
-              <Save className="w-3 h-3" />
-              <span>Guardado automático local</span>
-            </div>
-            <p className="text-[10px] text-gray-400 text-center">v1.1 • Sincronización Cloud</p>
+            <p className="text-[10px] text-gray-400 text-center">v1.1 • Religión Católica Andalucía</p>
           </div>
         </div>
       </aside>
