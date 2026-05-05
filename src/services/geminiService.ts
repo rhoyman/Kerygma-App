@@ -34,9 +34,8 @@ async function getAI() {
   }
   
   try {
-    const { GoogleGenAI } = await import("@google/genai");
-    // Volvemos al formato de objeto que es el estándar de la SDK
-    aiClient = new GoogleGenAI({ apiKey });
+    const { GoogleGenerativeAI } = await import("@google/generative-ai");
+    aiClient = new GoogleGenerativeAI(apiKey);
     return aiClient;
   } catch (err) {
     console.error("Error al inicializar la SDK de Gemini:", err);
@@ -70,11 +69,10 @@ export async function suggestConcrecion(
   Responde con una lista corta y directa en español.`;
 
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-1.5-flash",
-      contents: prompt,
-    });
-    return response.text ?? "No se pudo generar una sugerencia.";
+    const model = ai.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    return response.text() ?? "No se pudo generar una sugerencia.";
   } catch (error) {
     console.error("Error generating suggestion:", error);
     return "Error al conectar con la IA.";
@@ -100,11 +98,10 @@ export async function evaluateLinks(
   Si ninguno es relevante, responde con la palabra "NINGUNO".`;
 
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-1.5-flash",
-      contents: prompt,
-    });
-    const text = response.text?.trim() || "";
+    const model = ai.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const text = response.text()?.trim() || "";
     if (text === "NINGUNO") return [];
     
     return text.split(',').map((id: string) => id.trim()).filter((id: string) => saberes.some((s: any) => s.id === id));
@@ -133,11 +130,10 @@ export async function suggestSaberesForCriteria(
   Selecciona solo los que sean realmente necesarios. Si ninguno es relevante, responde "NINGUNO".`;
 
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-1.5-flash",
-      contents: prompt,
-    });
-    const text = response.text?.trim() || "";
+    const model = ai.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const text = response.text()?.trim() || "";
     if (text === "NINGUNO") return [];
     return text.split(',').map((id: string) => id.trim()).filter((id: string) => id.length > 0);
   } catch (error) {
@@ -168,11 +164,10 @@ export async function suggestUnitContent(
   Responde con el texto propuesto directamente en un formato de lista claro.`;
 
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-1.5-flash",
-      contents: prompt,
-    });
-    return response.text?.trim() || "No se ha podido generar contenido.";
+    const model = ai.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    return response.text()?.trim() || "No se ha podido generar contenido.";
   } catch (error) {
     console.error("Error suggesting content:", error);
     return "Error al generar sugerencia de contenidos.";
@@ -232,11 +227,10 @@ export async function generateSequencing(
   Asegúrate de que los criterios de evaluación de cada actividad sean coherentes con el currículo oficial aportado. IMPORTANTE: En el campo "criteria" de cada actividad, incluye la descripción de los criterios de evaluación precedida por su código (ID). NO incluyas las competencias específicas.`;
 
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-1.5-flash",
-      contents: prompt,
-    });
-    const text = response.text?.trim() || "{}";
+    const model = ai.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const text = response.text()?.trim() || "{}";
     const jsonStr = text.replace(/```json/g, "").replace(/```/g, "").trim();
     const data = JSON.parse(jsonStr);
     return {
@@ -291,11 +285,10 @@ export async function regenerateActivity(
   }`;
 
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-1.5-flash",
-      contents: prompt,
-    });
-    const text = response.text?.trim() || "{}";
+    const model = ai.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const text = response.text()?.trim() || "{}";
     const jsonStr = text.replace(/```json/g, "").replace(/```/g, "").trim();
     return JSON.parse(jsonStr);
   } catch (error) {
@@ -328,11 +321,10 @@ export async function regenerateFinalProduct(
   }`;
 
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-1.5-flash",
-      contents: prompt,
-    });
-    const text = response.text?.trim() || "{}";
+    const model = ai.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const text = response.text()?.trim() || "{}";
     const jsonStr = text.replace(/```json/g, "").replace(/```/g, "").trim();
     const data = JSON.parse(jsonStr);
     return {
@@ -383,11 +375,10 @@ export async function analyzeExistingContent(
   Si algún elemento no tiene relación clara, no lo incluyas en los arrays correspondientes.`;
 
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-1.5-flash",
-      contents: prompt,
-    });
-    const text = response.text?.trim() || "{}";
+    const model = ai.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const text = response.text()?.trim() || "{}";
     const cleanJson = text.replace(/```json/g, "").replace(/```/g, "").trim();
     return JSON.parse(cleanJson);
   } catch (error) {
@@ -429,11 +420,10 @@ export async function generateEvaluationInstruments(
   }`;
 
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-1.5-flash",
-      contents: prompt,
-    });
-    const text = response.text?.trim() || "{}";
+    const model = ai.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const text = response.text()?.trim() || "{}";
     const cleanJson = text.replace(/```json/g, "").replace(/```/g, "").trim();
     return JSON.parse(cleanJson);
   } catch (error) {
@@ -477,11 +467,10 @@ export async function generateDiversityMeasures(
   }`;
 
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-1.5-flash",
-      contents: prompt,
-    });
-    const text = response.text?.trim() || "{}";
+    const model = ai.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const text = response.text()?.trim() || "{}";
     const cleanJson = text.replace(/```json/g, "").replace(/```/g, "").trim();
     return JSON.parse(cleanJson);
   } catch (error) {
