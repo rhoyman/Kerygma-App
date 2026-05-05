@@ -70,7 +70,7 @@ export async function suggestConcrecion(
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-flash-latest",
+      model: "gemini-1.5-flash",
       contents: prompt,
     });
     return response.text ?? "No se pudo generar una sugerencia.";
@@ -100,7 +100,7 @@ export async function evaluateLinks(
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-flash-latest",
+      model: "gemini-1.5-flash",
       contents: prompt,
     });
     const text = response.text?.trim() || "";
@@ -133,7 +133,7 @@ export async function suggestSaberesForCriteria(
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-flash-latest",
+      model: "gemini-1.5-flash",
       contents: prompt,
     });
     const text = response.text?.trim() || "";
@@ -168,7 +168,7 @@ export async function suggestUnitContent(
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-flash-latest",
+      model: "gemini-1.5-flash",
       contents: prompt,
     });
     return response.text?.trim() || "No se ha podido generar contenido.";
@@ -207,7 +207,7 @@ export async function generateSequencing(
      - Criterios de evaluación específicos vinculados a esa actividad (basados en el currículo aportado)
      - Propuesta de ejercicios o tareas concretas dentro de la actividad
      - Metodología específica para esta sesión
-
+ 
   Responde ÚNICAMENTE con un objeto JSON (sin bloques markdown) con este formato:
   {
     "justification": "texto de la justificación",
@@ -232,7 +232,7 @@ export async function generateSequencing(
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-flash-latest",
+      model: "gemini-1.5-flash",
       contents: prompt,
     });
     const text = response.text?.trim() || "{}";
@@ -291,7 +291,7 @@ export async function regenerateActivity(
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-flash-latest",
+      model: "gemini-1.5-flash",
       contents: prompt,
     });
     const text = response.text?.trim() || "{}";
@@ -328,7 +328,7 @@ export async function regenerateFinalProduct(
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-flash-latest",
+      model: "gemini-1.5-flash",
       contents: prompt,
     });
     const text = response.text?.trim() || "{}";
@@ -383,7 +383,7 @@ export async function analyzeExistingContent(
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-flash-latest",
+      model: "gemini-1.5-flash",
       contents: prompt,
     });
     const text = response.text?.trim() || "{}";
@@ -429,7 +429,7 @@ export async function generateEvaluationInstruments(
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-flash-latest",
+      model: "gemini-1.5-flash",
       contents: prompt,
     });
     const text = response.text?.trim() || "{}";
@@ -477,7 +477,7 @@ export async function generateDiversityMeasures(
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-flash-latest",
+      model: "gemini-1.5-flash",
       contents: prompt,
     });
     const text = response.text?.trim() || "{}";
