@@ -54,7 +54,7 @@ export async function suggestConcrecion(
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: "gemini-flash-latest",
       contents: prompt,
     });
     return response.text ?? "No se pudo generar una sugerencia.";
@@ -84,7 +84,7 @@ export async function evaluateLinks(
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: "gemini-flash-latest",
       contents: prompt,
     });
     const text = response.text?.trim() || "";
@@ -117,7 +117,7 @@ export async function suggestSaberesForCriteria(
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: "gemini-flash-latest",
       contents: prompt,
     });
     const text = response.text?.trim() || "";
@@ -152,7 +152,7 @@ export async function suggestUnitContent(
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: "gemini-flash-latest",
       contents: prompt,
     });
     return response.text?.trim() || "No se ha podido generar contenido.";
@@ -216,7 +216,7 @@ export async function generateSequencing(
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: "gemini-flash-latest",
       contents: prompt,
     });
     const text = response.text?.trim() || "{}";
@@ -275,7 +275,7 @@ export async function regenerateActivity(
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: "gemini-flash-latest",
       contents: prompt,
     });
     const text = response.text?.trim() || "{}";
@@ -312,7 +312,7 @@ export async function regenerateFinalProduct(
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: "gemini-flash-latest",
       contents: prompt,
     });
     const text = response.text?.trim() || "{}";
@@ -367,7 +367,7 @@ export async function analyzeExistingContent(
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: "gemini-flash-latest",
       contents: prompt,
     });
     const text = response.text?.trim() || "{}";
@@ -413,7 +413,7 @@ export async function generateEvaluationInstruments(
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: "gemini-flash-latest",
       contents: prompt,
     });
     const text = response.text?.trim() || "{}";
@@ -461,7 +461,7 @@ export async function generateDiversityMeasures(
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: "gemini-flash-latest",
       contents: prompt,
     });
     const text = response.text?.trim() || "{}";
