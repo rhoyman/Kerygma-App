@@ -702,12 +702,13 @@ export default function App() {
     );
     
     // migration logic: push local meaningful data to cloud
+    // But ONLY if we don't have cloud data yet or to ensure consistency
     const migrateLocalToCloud = async () => {
       try {
         const localSaved = localStorage.getItem('kerygma_blocks');
         if (localSaved) {
           const localBlocks: CurriculumBlock[] = JSON.parse(localSaved);
-          const meaningfulBlocks = localBlocks.filter(b => b.initialized || b.title);
+          const meaningfulBlocks = localBlocks.filter(b => b.initialized || (b.title && b.title !== 'Nueva Situación'));
           
           for (const block of meaningfulBlocks) {
             const isDefault = block.id.startsWith('primaria-') || block.id.startsWith('infantil-') || block.id.startsWith('secundaria-') || block.id.startsWith('bach-');
@@ -715,8 +716,6 @@ export default function App() {
               ? `${block.id}-${user.uid.slice(0, 5)}` 
               : block.id;
             
-            // Just trigger a sync for each meaningful block
-            // syncBlock handles the write to Firestore
             await syncBlock({ ...block, id: safeId, userId: user.uid });
           }
         }
@@ -725,8 +724,6 @@ export default function App() {
       }
     };
 
-    migrateLocalToCloud();
-
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const remoteBlocks = snapshot.docs.map(doc => ({ 
         ...doc.data(), 
@@ -734,16 +731,18 @@ export default function App() {
       } as CurriculumBlock));
       
       setBlocks(currentBlocks => {
+        // If we just logged in and got remote blocks, we prefer them
+        // unless we have very fresh local changes
         const mergedMap = new Map<string, CurriculumBlock>();
         
-        // 1. Cloud data is the primary source
+        // 1. Cloud data is the absolute source of truth
         remoteBlocks.forEach(rb => mergedMap.set(rb.id, rb));
         
-        // 2. Keep local blocks that are being synchronized (haven't hit the cloud yet)
+        // 2. Only keep local blocks if they are not in the cloud AND assigned to this user
+        // (This handles blocks just created that haven't synced yet)
         currentBlocks.forEach(lb => {
           if (!mergedMap.has(lb.id)) {
-            // Only keep it if it's explicitly assigned to this user or if it's new/unsynced
-            if (!lb.userId || lb.userId === user.uid) {
+            if (lb.userId === user.uid) {
               mergedMap.set(lb.id, lb);
             }
           }
@@ -751,14 +750,16 @@ export default function App() {
         
         const mergedArray = Array.from(mergedMap.values())
           .sort((a, b) => {
-            // Sort by updatedAt if available, otherwise by creation/ID
             const timeA = (a.updatedAt as any)?.seconds || 0;
             const timeB = (b.updatedAt as any)?.seconds || 0;
-            return timeB - timeA; // Most recent first
+            if (timeA !== timeB) return timeB - timeA;
+            return b.id.localeCompare(a.id);
           });
         
-        if (mergedArray.length > 0 && (!activeBlockId || !mergedArray.find(b => b.id === activeBlockId))) {
-          setActiveBlockId(mergedArray[0].id);
+        if (mergedArray.length > 0) {
+          if (!activeBlockId || !mergedArray.find(b => b.id === activeBlockId)) {
+            setActiveBlockId(mergedArray[0].id);
+          }
         }
         
         return mergedArray;
@@ -771,7 +772,13 @@ export default function App() {
       setIsFirestoreLoading(false);
     });
 
-    return () => unsubscribe();
+    // Run migration after a small delay to let onSnapshot settle
+    const migTimer = setTimeout(migrateLocalToCloud, 2000);
+
+    return () => {
+      unsubscribe();
+      clearTimeout(migTimer);
+    };
   }, [user, db, loading]);
 
   const syncBlock = async (block: CurriculumBlock) => {
