@@ -162,6 +162,46 @@ const getCategoryColor = (category?: string) => {
   }
 };
 
+function WelcomeScreen({ onLogin, loading, isFirebaseEnabled }: { onLogin: () => void, loading: boolean, isFirebaseEnabled: boolean }) {
+  return (
+    <div className="min-h-screen bg-white flex flex-col items-center justify-center p-6 text-center">
+      <div className="max-w-2xl w-full flex flex-col items-center gap-8">
+        <div className="flex flex-col items-center">
+          <div className="flex items-baseline leading-none mb-4">
+            <span className="text-6xl md:text-8xl font-bold tracking-tighter serif text-primary italic">Kerygma</span>
+            <span className="text-6xl md:text-8xl font-black tracking-tighter text-accent ml-1">APP</span>
+          </div>
+          <p className="text-lg md:text-xl font-medium text-gray-500 max-w-lg">
+            Planificador de Situaciones de Aprendizaje de Religión Católica para Andalucía
+          </p>
+        </div>
+
+        <div className="w-full max-w-sm pt-8">
+          <button
+            onClick={onLogin}
+            disabled={loading || !isFirebaseEnabled}
+            className="w-full py-5 bg-primary text-white rounded-2xl font-bold uppercase tracking-widest hover:scale-105 active:scale-95 transition-all shadow-2xl shadow-primary/20 flex items-center justify-center gap-4 disabled:opacity-50"
+          >
+            {loading ? <Loader2 className="w-6 h-6 animate-spin" /> : <UserIcon className="w-6 h-6" />}
+            Acceder con Google
+          </button>
+          {!isFirebaseEnabled && (
+            <p className="mt-4 text-xs text-amber-600 font-bold uppercase tracking-widest">
+              Firebase no configurado
+            </p>
+          )}
+        </div>
+
+        <div className="mt-12 max-w-md pt-8 border-t border-gray-100">
+          <p className="text-[11px] text-gray-400 leading-relaxed italic">
+            Esta aplicación está en fase de pruebas. Para aportar ideas o sugerencias, o reportar errores, escribe a <span className="font-bold text-gray-500">rhoyman823@g.educaand.es</span> con el asunto "Sugerencias KerygmaApp"
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const { user, login, logout, loading, isFirebaseEnabled } = useAuth();
   const [blocks, setBlocks] = useState<CurriculumBlock[]>(() => {
@@ -1226,6 +1266,10 @@ export default function App() {
     );
   }
 
+  if (!user) {
+    return <WelcomeScreen onLogin={() => login('google')} loading={loading} isFirebaseEnabled={isFirebaseEnabled} />;
+  }
+
   return (
     <div className="min-h-screen bg-background text-[#1A1A1A] font-sans flex flex-col h-screen overflow-hidden">
       {/* Mobile Header / Top Bar */}
@@ -1236,11 +1280,14 @@ export default function App() {
         >
           {isSidebarOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
         </button>
-        <div className="flex items-center gap-2">
-          <BookOpen className="w-5 h-5 text-primary" />
-          <span className="font-title font-bold text-sm text-primary flex items-center gap-1.5">
-            KERYGMA <span className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded-full font-bold">2.0</span>
-          </span>
+        <div className="flex flex-col">
+          <div className="flex items-baseline leading-none">
+            <span className="text-3xl font-bold tracking-tighter serif text-primary italic">Kerygma</span>
+            <span className="text-3xl font-black tracking-tighter text-accent ml-0.5">APP</span>
+          </div>
+          <p className="text-[9px] text-gray-400 font-bold leading-tight mt-2 max-w-[200px]">
+            Planificador de Situaciones de Aprendizaje de Religión Católica para Andalucía
+          </p>
         </div>
         <div className="w-10" /> {/* Spacer */}
       </header>
@@ -1273,9 +1320,13 @@ export default function App() {
         <div className="p-6 border-bottom border-gray-100">
           <div className="flex flex-col gap-4">
             <div className="flex flex-col">
-              <h1 className="text-4xl font-bold tracking-tighter serif text-primary italic leading-none">Kerygma</h1>
-              <p className="text-4xl font-black tracking-tighter text-accent leading-none -mt-1">APP</p>
-              <p className="text-[10px] text-gray-400 font-bold leading-tight mt-2 max-w-[200px]">Planificador de SdAs de Religión Católica en Andalucía</p>
+              <div className="flex items-baseline leading-none">
+                <span className="text-4xl font-bold tracking-tighter serif text-primary italic">Kerygma</span>
+                <span className="text-4xl font-black tracking-tighter text-accent ml-0.5">APP</span>
+              </div>
+              <p className="text-[10px] text-gray-400 font-bold leading-tight mt-2 max-w-[200px]">
+                Planificador de Situaciones de Aprendizaje de Religión Católica para Andalucía
+              </p>
             </div>
             
             {!isAIReady && (
@@ -1376,7 +1427,34 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* Export and delete buttons removed as per user request */}
+                {activeBlockId === block.id && (
+                  <div className="flex border-t border-white/10 mt-1">
+                    <button 
+                      onClick={() => handleExport(block)}
+                      disabled={block.step !== 'sequencing'}
+                      className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-[9px] font-bold uppercase tracking-widest transition-colors rounded-bl-lg border-r border-white/10 ${
+                        block.step === 'sequencing'
+                          ? 'hover:bg-white/10 cursor-pointer'
+                          : 'opacity-40 cursor-not-allowed'
+                      }`}
+                      title={block.step !== 'sequencing' ? 'Completa la secuenciación para exportar' : 'Exportar contenido'}
+                    >
+                      <ClipboardList className="w-3 h-3" />
+                      <span>Exportar</span>
+                    </button>
+                    <div className="w-[1px] bg-white/10" />
+                    <button 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        removeBlock(block.id);
+                      }}
+                      className="flex-1 flex items-center justify-center gap-1.5 py-2 text-[9px] font-bold uppercase tracking-widest text-red-100 hover:bg-red-500 rounded-br-lg transition-colors shadow-none"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                      <span>Eliminar</span>
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           ))}
@@ -1390,9 +1468,9 @@ export default function App() {
           </button>
         </nav>
 
-        <div className="p-4 border-t border-gray-100">
+        <div className="p-4 border-t border-gray-100 bg-gray-50/50">
           <div className="flex flex-col items-center gap-1">
-            <p className="text-[10px] text-gray-400 text-center">v1.1 • Religión Católica Andalucía</p>
+            <p className="text-[9px] text-gray-400 text-center font-bold uppercase tracking-tighter">v1.1 • Religión Católica Andalucía</p>
           </div>
         </div>
       </div>
@@ -2599,7 +2677,7 @@ export default function App() {
 
       {/* Footer Info Mobile Only or floating */}
       <div className="md:hidden p-4 bg-white border-t border-gray-200">
-        <p className="text-center text-[10px] text-gray-400 uppercase tracking-widest">Kerygma Planificador</p>
+        <p className="text-center text-[10px] text-gray-400 uppercase tracking-widest">Kerygma APP</p>
       </div>
     </div>
   );
