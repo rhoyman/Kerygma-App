@@ -393,13 +393,12 @@ export default function App() {
         return { ...data, id: doc.id };
       });
       
-      // Solo actualizamos blocks si hay datos remotos o si ya terminamos de migrar
-      // (Si remoteBlocks está vacío, esperamos a que la migración termine si es un login fresco)
-      if (remoteBlocks.length > 0) {
+      // Sync with cloud
+      if (remoteBlocks.length >= 0) {
         setBlocks(remoteBlocks);
         setActiveBlockId(current => {
           if (!current || !remoteBlocks.find(b => b.id === current)) {
-            return remoteBlocks[0].id;
+            return remoteBlocks[0]?.id || '';
           }
           return current;
         });
@@ -457,12 +456,10 @@ export default function App() {
     }
   };
 
-  // Local storage persistence (only when logged out)
+  // Local storage persistence Cache
   useEffect(() => {
-    if (!user) {
-      localStorage.setItem('kerygma_blocks', JSON.stringify(blocks));
-    }
-  }, [blocks, user]);
+    localStorage.setItem('kerygma_blocks', JSON.stringify(blocks));
+  }, [blocks]);
 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
