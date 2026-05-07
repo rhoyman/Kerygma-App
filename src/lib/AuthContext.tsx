@@ -32,7 +32,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = async (provider: 'google' | 'github' = 'google') => {
     if (!auth) throw new Error('Firebase no está configurado');
+    
     const authProvider = provider === 'github' ? githubProvider : googleProvider;
+    
+    // Always prompt for account selection to fulfill user request
+    if (provider === 'google') {
+      googleProvider.setCustomParameters({ prompt: 'select_account' });
+    }
+
     try {
       await signInWithPopup(auth, authProvider);
     } catch (error: any) {

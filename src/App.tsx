@@ -696,32 +696,28 @@ export default function App() {
     setIsFirestoreLoading(true);
     
     // First, fetch current cloud data
-    const q = query(collection(db, 'situations'), where('userId', '==', user.uid));
+    const q = query(
+      collection(db, 'situations'), 
+      where('userId', '==', user.uid)
+    );
     
-    // We'll use getDocs once to see if we need to migrate local data
-    const checkMigration = async () => {
+    // migration logic: push local meaningful data to cloud
+    const migrateLocalToCloud = async () => {
       try {
-        const snapshot = await getDocs(q);
-        const cloudBlocks = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as CurriculumBlock));
-        
-        // If cloud blocks exist, we only sync local ones that are missing
         const localSaved = localStorage.getItem('kerygma_blocks');
         if (localSaved) {
           const localBlocks: CurriculumBlock[] = JSON.parse(localSaved);
-          // Only sync if they are meaningful (not just some leftover defaults)
           const meaningfulBlocks = localBlocks.filter(b => b.initialized || b.title);
           
           for (const block of meaningfulBlocks) {
-            // Ensure ID doesn't collide with other users if it was a default
             const isDefault = block.id.startsWith('primaria-') || block.id.startsWith('infantil-') || block.id.startsWith('secundaria-') || block.id.startsWith('bach-');
             const safeId = isDefault && !block.id.includes(user.uid.slice(0, 5))
               ? `${block.id}-${user.uid.slice(0, 5)}` 
               : block.id;
             
-            // Sync if not in cloud
-            if (!cloudBlocks.find(cb => cb.id === safeId)) {
-              await syncBlock({ ...block, id: safeId, userId: user.uid });
-            }
+            // Just trigger a sync for each meaningful block
+            // syncBlock handles the write to Firestore
+            await syncBlock({ ...block, id: safeId, userId: user.uid });
           }
         }
       } catch (e) {
@@ -729,33 +725,40 @@ export default function App() {
       }
     };
 
-    checkMigration();
+    migrateLocalToCloud();
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const remoteBlocks = snapshot.docs.map(doc => {
-        const data = doc.data() as CurriculumBlock;
-        return { ...data, id: doc.id };
-      });
+      const remoteBlocks = snapshot.docs.map(doc => ({ 
+        ...doc.data(), 
+        id: doc.id 
+      } as CurriculumBlock));
       
-      // Sync with cloud using merge strategy
       setBlocks(currentBlocks => {
         const mergedMap = new Map<string, CurriculumBlock>();
         
-        // Use remote as base
+        // 1. Cloud data is the primary source
         remoteBlocks.forEach(rb => mergedMap.set(rb.id, rb));
         
-        // Re-apply local blocks that are pending sync or new
+        // 2. Keep local blocks that are being synchronized (haven't hit the cloud yet)
         currentBlocks.forEach(lb => {
-          if (syncTimeoutRef.current[lb.id] || !mergedMap.has(lb.id)) {
-            mergedMap.set(lb.id, lb);
+          if (!mergedMap.has(lb.id)) {
+            // Only keep it if it's explicitly assigned to this user or if it's new/unsynced
+            if (!lb.userId || lb.userId === user.uid) {
+              mergedMap.set(lb.id, lb);
+            }
           }
         });
         
-        const mergedArray = Array.from(mergedMap.values());
+        const mergedArray = Array.from(mergedMap.values())
+          .sort((a, b) => {
+            // Sort by updatedAt if available, otherwise by creation/ID
+            const timeA = (a.updatedAt as any)?.seconds || 0;
+            const timeB = (b.updatedAt as any)?.seconds || 0;
+            return timeB - timeA; // Most recent first
+          });
         
-        // Secondary fix for active selection
         if (mergedArray.length > 0 && (!activeBlockId || !mergedArray.find(b => b.id === activeBlockId))) {
-          setTimeout(() => setActiveBlockId(mergedArray[0].id), 0);
+          setActiveBlockId(mergedArray[0].id);
         }
         
         return mergedArray;

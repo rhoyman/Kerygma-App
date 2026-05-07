@@ -72,6 +72,7 @@ export interface CurriculumBlock {
   activities?: Activity[];
   evaluation?: EvaluationSection;
   diversity?: DiversitySection;
+  updatedAt?: any;
 }
 
 export interface Competencia {
