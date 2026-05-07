@@ -210,7 +210,8 @@ export default function App() {
   });
   
   const [isFirestoreLoading, setIsFirestoreLoading] = useState(true);
-  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncingCount, setSyncingCount] = useState(0);
+  const isSyncing = syncingCount > 0;
   const [isAIReady, setIsAIReady] = useState<boolean>(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth >= 768);
 
@@ -224,6 +225,7 @@ export default function App() {
     checkAI();
   }, []);
   const [activeBlockId, setActiveBlockId] = useState<string>(blocks[0]?.id || '');
+  const syncTimeoutRef = useRef<Record<string, NodeJS.Timeout>>({});
   const [isGenerating, setIsGenerating] = useState<string | null>(null);
   const [isEvaluating, setIsEvaluating] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
@@ -458,44 +460,45 @@ export default function App() {
 
   const syncBlock = async (block: CurriculumBlock) => {
     if (!user || !db) return;
-    setIsSyncing(true);
     
-    // Sanitize data recursively to remove undefined values which Firestore doesn't like
-    const sanitize = (obj: any): any => {
-      if (Array.isArray(obj)) {
-        return obj.map(sanitize);
-      }
-      if (obj !== null && typeof obj === 'object') {
-        // Only recurse into plain objects. 
-        // Firestore FieldValues (like serverTimestamp()) or other special objects should be left as is.
-        if (Object.getPrototypeOf(obj) !== Object.prototype) {
-          return obj;
-        }
-
-        const result: any = {};
-        Object.entries(obj).forEach(([key, value]) => {
-          if (value !== undefined) {
-            result[key] = sanitize(value);
-          }
-        });
-        return result;
-      }
-      return obj;
-    };
-
-    try {
-      const sanitizedBlock = sanitize({ 
-        ...block, 
-        userId: user.uid,
-        updatedAt: serverTimestamp() 
-      });
-
-      await setDoc(doc(db, 'situations', sanitizedBlock.id), sanitizedBlock, { merge: true });
-    } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, `situations/${block.id}`);
-    } finally {
-      setIsSyncing(false);
+    // Debounce sync
+    if (syncTimeoutRef.current[block.id]) {
+      clearTimeout(syncTimeoutRef.current[block.id]);
     }
+
+    syncTimeoutRef.current[block.id] = setTimeout(async () => {
+      setSyncingCount(prev => prev + 1);
+      
+      const sanitize = (obj: any): any => {
+        if (Array.isArray(obj)) return obj.map(sanitize);
+        if (obj !== null && typeof obj === 'object') {
+          if (Object.getPrototypeOf(obj) !== Object.prototype) return obj;
+          const result: any = {};
+          Object.entries(obj).forEach(([key, value]) => {
+            if (value !== undefined) result[key] = sanitize(value);
+          });
+          return result;
+        }
+        return obj;
+      };
+
+      try {
+        if (isSyncing) { // Just for a bit of logging or tracking if needed
+          // console.log("Syncing block:", block.id);
+        }
+        const sanitizedBlock = sanitize({ 
+          ...block, 
+          userId: user.uid,
+          updatedAt: serverTimestamp() 
+        });
+        await setDoc(doc(db, 'situations', sanitizedBlock.id), sanitizedBlock, { merge: true });
+      } catch (error) {
+        handleFirestoreError(error, OperationType.WRITE, `situations/${block.id}`);
+      } finally {
+        setSyncingCount(prev => Math.max(0, prev - 1));
+        delete syncTimeoutRef.current[block.id];
+      }
+    }, 1000); // 1 second debounce
   };
 
   // Local storage persistence Cache
@@ -556,7 +559,7 @@ export default function App() {
 
       const result = await analyzeExistingContent(activeBlock.materials, context);
 
-      // Apply results WITHOUT switching view, just updating selections
+      let updatedBlock: CurriculumBlock | null = null;
       setBlocks(prev => prev.map(b => {
         if (b.id !== activeBlock.id) return b;
         
@@ -598,9 +601,10 @@ export default function App() {
             selected: result.saberIds.includes(s.id)
           }))
         };
-        syncBlock(updated);
+        updatedBlock = updated;
         return updated;
       }));
+      if (updatedBlock) syncBlock(updatedBlock);
     } catch (err) {
       console.error(err);
     } finally {
@@ -621,10 +625,11 @@ export default function App() {
     const saberesContext = activeBlock.saberesBásicos.map(s => ({ id: s.id, description: s.description }));
     const links = await evaluateLinks(crit.description, saberesContext);
     
+    let updatedBlock: CurriculumBlock | null = null;
     setBlocks(prev => {
       const next = prev.map(b => {
         if (b.id !== activeBlock.id) return b;
-        return {
+        const updated = {
           ...b,
           competenciasEspecíficas: b.competenciasEspecíficas.map(ce => {
             if (ce.id !== ceId) return ce;
@@ -636,21 +641,23 @@ export default function App() {
             };
           })
         };
+        updatedBlock = updated;
+        return updated;
       });
-      const updated = next.find(b => b.id === activeBlock.id);
-      if (updated) syncBlock(updated);
       return next;
     });
     
+    if (updatedBlock) syncBlock(updatedBlock);
     setIsEvaluating(null);
   };
 
   const toggleSaberLink = (ceId: string, critId: string, saberId: string) => {
     if (!activeBlock) return;
+    let updatedBlock: CurriculumBlock | null = null;
     setBlocks(prev => {
       const next = prev.map(b => {
         if (b.id !== activeBlock.id) return b;
-        return {
+        const updated = {
           ...b,
           competenciasEspecíficas: b.competenciasEspecíficas.map(ce => {
             if (ce.id !== ceId) return ce;
@@ -667,42 +674,40 @@ export default function App() {
             };
           })
         };
+        updatedBlock = updated;
+        return updated;
       });
-      const updated = next.find(b => b.id === activeBlock.id);
-      if (updated) syncBlock(updated);
       return next;
     });
+    if (updatedBlock) syncBlock(updatedBlock);
   };
 
   const updateBlock = (blockId: string, updates: Partial<CurriculumBlock>) => {
+    let updatedBlock: CurriculumBlock | null = null;
     setBlocks(prev => {
       const block = prev.find(b => b.id === blockId);
       if (!block) return prev;
 
       let targetId = blockId;
-      // If it's a legacy/default ID and we are logged in, migrate it to a user-owned ID
       const isDefault = blockId.startsWith('primaria-') || blockId.startsWith('infantil-') || blockId.startsWith('secundaria-') || blockId.startsWith('bach-');
       if (user && isDefault && !blockId.includes(user.uid.slice(0, 5))) {
         targetId = `${blockId}-${user.uid.slice(0, 5)}`;
       }
 
       const updated = { ...block, ...updates, id: targetId };
+      updatedBlock = updated;
       
-      // Update local state
       const next = prev.map(b => b.id === blockId ? updated : b);
-      
-      // Sync to cloud
-      syncBlock(updated);
-      
-      // Handle active state if ID changed
-      if (targetId !== blockId && activeBlockId === blockId) {
-        // Use a timeout or next tick to avoid state update during render if needed, 
-        // but here it's fine as it's inside a handler
-        setTimeout(() => setActiveBlockId(targetId), 0);
-      }
-      
       return next;
     });
+
+    if (updatedBlock) {
+      syncBlock(updatedBlock);
+      const newId = (updatedBlock as CurriculumBlock).id;
+      if (newId !== blockId && activeBlockId === blockId) {
+        setActiveBlockId(newId);
+      }
+    }
   };
 
   const handleStageChange = (blockId: string, stage: string) => {
@@ -872,6 +877,7 @@ export default function App() {
   };
 
   const updateConcrecion = (blockId: string, type: 'criterio' | 'saber', parentId: string, id: string, value: string) => {
+    let updatedBlock: CurriculumBlock | null = null;
     setBlocks(prev => {
       const next = prev.map(b => {
         if (b.id !== blockId) return b;
@@ -892,12 +898,12 @@ export default function App() {
             sb.id === id ? { ...sb, concreción: value } : sb
           );
         }
+        updatedBlock = newBlock;
         return newBlock;
       });
-      const updated = next.find(b => b.id === blockId);
-      if (updated) syncBlock(updated);
       return next;
     });
+    if (updatedBlock) syncBlock(updatedBlock);
   };
 
   const handleSuggest = async (type: 'criterio' | 'saber', parentId: string, item: Criterio | SaberBásico) => {
@@ -909,6 +915,7 @@ export default function App() {
   };
 
   const toggleElementSelection = (blockId: string, type: 'criterio' | 'saber', parentId: string, id: string) => {
+    let updatedBlock: CurriculumBlock | null = null;
     setBlocks(prev => {
       const next = prev.map(b => {
         if (b.id !== blockId) return b;
@@ -929,12 +936,12 @@ export default function App() {
             s.id === id ? { ...s, selected: !s.selected } : s
           );
         }
+        updatedBlock = nb;
         return nb;
       });
-      const updated = next.find(b => b.id === blockId);
-      if (updated) syncBlock(updated);
       return next;
     });
+    if (updatedBlock) syncBlock(updatedBlock);
   };
 
   const getSelectedCounts = (block: CurriculumBlock) => {
@@ -1021,21 +1028,23 @@ export default function App() {
     setIsEvaluating('global-saberes');
     const suggestedIds = await suggestSaberesForCriteria(selectedCriteriaDescriptions, activeBlock.saberesBásicos);
     
+    let updatedBlock: CurriculumBlock | null = null;
     setBlocks(prev => {
       const next = prev.map(b => {
         if (b.id !== activeBlock.id) return b;
-        return {
+        const updated = {
           ...b,
           saberesBásicos: b.saberesBásicos.map(s => ({
             ...s,
             selected: suggestedIds.length > 0 ? suggestedIds.includes(s.id) : s.selected
           }))
         };
+        updatedBlock = updated;
+        return updated;
       });
-      const updated = next.find(b => b.id === activeBlock.id);
-      if (updated) syncBlock(updated);
       return next;
     });
+    if (updatedBlock) syncBlock(updatedBlock);
     setIsEvaluating(null);
   };
 
