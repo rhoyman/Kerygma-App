@@ -476,3 +476,48 @@ export async function generateDiversityMeasures(
     return { measures: [] };
   }
 }
+
+export async function improveInstrument(
+  name: string,
+  description: string,
+  activities: { title: string, description: string }[],
+  content: string
+): Promise<{ name: string, description: string, canvaPrompt: string }> {
+  const ai = await getAI();
+  if (!ai) return { name, description, canvaPrompt: "" };
+
+  const prompt = `Actúa como un experto en evaluación educativa para Religión Católica.
+  Tengo el siguiente instrumento de evaluación parcial:
+  - Nombre: ${name}
+  - Descripción actual: ${description}
+  
+  Este instrumento se usará en una situación de aprendizaje con estos contenidos:
+  ${content}
+  
+  Y estas actividades vinculadas:
+  ${activities.map((a, i) => `Actividad: ${a.title}. ${a.description}`).join('\n')}
+  
+  Mejora, formatea y concreta este instrumento. Hazlo más profesional, pedagógico y útil para el docente. 
+  Asegúrate de que la descripción sea clara y detallada sobre qué se evalúa y cómo.
+  Propón también un "canvaPrompt" (descripción técnica para crear el diseño visual del instrumento en Canva o similar).
+  
+  Responde ÚNICAMENTE con un objeto JSON:
+  {
+    "name": "Nombre mejorado",
+    "description": "Descripción profesional y detallada",
+    "canvaPrompt": "Descripción técnica para el diseño visual"
+  }`;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-flash-latest",
+      contents: prompt,
+    });
+    const text = response.text?.trim() || "{}";
+    const cleanJson = text.replace(/```json/g, "").replace(/```/g, "").trim();
+    return JSON.parse(cleanJson);
+  } catch (error) {
+    console.error("Error improving instrument:", error);
+    return { name, description, canvaPrompt: "" };
+  }
+}

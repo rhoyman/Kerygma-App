@@ -376,29 +376,49 @@ export const COMPETENCIAS_ESO: Omit<Competencia, "criteriosEvaluación">[] = [
 export const COMPETENCIAS_BACHILLERATO: Omit<Competencia, "criteriosEvaluación">[] = [
   {
     id: "ce-bach-1",
-    description: "1. Identificar, valorar y expresar los elementos clave de la dignidad e identidad personal a través de la interpretación de biografías significativas y relatos bíblicos, para asumir la propia dignidad, respetar la de los otros y desarrollar con libertad un proyecto de vida con significado y sentido."
+    description: "1 Comprender y asumir el proyecto vital personal, reconociendo las propias ideas y creencias, contrastándolas con la antropología cristiana y otras cosmovisiones, para insertarse en la vida adulta y en el mundo profesional."
   },
   {
     id: "ce-bach-2",
-    description: "2. Valorar la condición relacional del ser humano, desarrollando destrezas y actitudes sociales orientadas a la justicia y a la mejora de la convivencia a la luz del humanismo cristiano, para aprender a vivir con otros y contribuir a la fraternidad universal y la sostenibilidad del planeta."
+    description: "2 Reconocer y desplegar el carácter relacional del ser humano, como fundamento de los deberes y libertades, desarrollando actitudes cívicas y democráticas, contrastando el Evangelio con otros humanismos e ideologías contemporáneas, para aprender a vivir con otros y contribuir a la construcción de una sociedad inclusiva."
   },
   {
     id: "ce-bach-3",
-    description: "3. Analizar los desafíos de la modernidad y la posmodernidad desde una perspectiva inclusiva y crítica, discerniéndolos con las claves de la ética cristiana y el Reino de Dios, para implicarse personal y profesionalmente en la transformación social y el logro del bien común."
+    description: "3 Interpretar los desafíos democráticos, socioeconómicos y ecológicos, analizando sus causas y consecuencias desde la moral social de la Iglesia, discerniendo las propuestas sociopolíticas de las religiones y los movimientos sociales, para asumir la ecología integral y la responsabilidad personal y social en el cuidado de la vida y del planeta."
   },
   {
     id: "ce-bach-4",
-    description: "4. Interpretar y admirar el patrimonio cultural en sus diferentes expresiones, apreciando cómo el cristianismo se ha encarnado en manifestaciones diversas, para desarrollar sentido de pertenencia, participar en la construcción de la convivencia y promover el diálogo intercultural y el respeto a los derechos humanos."
+    description: "4 Comprender y admirar el patrimonio cultural, interpretando su significado y expresiones con los métodos de análisis propios de cada disciplina, valorando críticamente las aportaciones del cristianismo en el desarrollo de los pueblos, para intervenir con criterio propio en el diálogo intercultural, la creación artística y en la construcción social del pensamiento."
   },
   {
     id: "ce-bach-5",
-    description: "5. Reconocer y apreciar la propia interioridad, la experiencia espiritual y religiosa presente en las culturas, comprendiendo la experiencia de personajes relevantes para discernir posibles respuestas a las preguntas sobre el sentido de la vida y favorecer el respeto entre las diferentes tradiciones religiosas."
+    description: "5 Valorar la dimensión espiritual como fuente de sentido y aprendizajes vitales, a través del análisis de las experiencias personales, del conocimiento de las tradiciones espirituales, y del diálogo interdisciplinar con otras visiones de la vida y del mundo, para descubrir las oportunidades personales, sociales y culturales de la experiencia espiritual como propuesta de plenitud de la vida personal y comunitaria."
   },
   {
     id: "ce-bach-6",
-    description: "6. Identificar y comprender los contenidos esenciales de la Teología cristiana, valorando su contribución a la construcción de la verdad y el diálogo con otros saberes, para disponer de una síntesis del cristianismo que permita dialogar con otras tradiciones, paradigmas y cosmovisiones."
+    description: "6 Conocer el método propio de la Teología y sus distintas especialidades analizando su lugar entre los saberes y disciplinas, estableciendo un diálogo transdisciplinar con las otras ciencias, para afrontar críticamente los desafíos éticos y la transformación social."
   }
 ];
+
+// Criterios de evaluación para Bachillerato 1º
+export const CRITERIOS_BACHILLERATO_1: Record<string, Criterio[]> = {
+  "ce-bach-1": [{ id: "crit-bach-1.1", description: "1.1. Identificar e interpretar las ideas y creencias que conforman la identidad personal, contrastándolas con categorías fundamentales de la antropología cristiana (creación, imagen de Dios, libertad, pecado, finitud, etc.) y de otras cosmovisiones.", isMinimum: true }],
+  "ce-bach-2": [{ id: "crit-bach-2.1", description: "2.1. Valorar, en el desarrollo de la identidad personal, la pertenencia a múltiples esferas sociales, promoviendo compromisos de respeto a la diversidad e inclusión en sociedades democráticas.", isMinimum: true }],
+  "ce-bach-3": [{ id: "crit-bach-3.1", description: "3.1. Describir los retos políticos y económicos en entornos locales y globales, analizando sus causas y proponiendo posibles soluciones a la luz de la propuesta moral del Reino de Dios y de otras cosmovisiones.", isMinimum: true }],
+  "ce-bach-4": [{ id: "crit-bach-4.1", description: "4.1. Valorar y admirar las diversas expresiones históricas del patrimonio común de la humanidad, analizando cómo el cristianismo se ha integrado en la historia, con luces y sombras, impregnando la cultura.", isMinimum: true }],
+  "ce-bach-5": [{ id: "crit-bach-5.1", description: "5.1. Identificar la dimensión espiritual de la persona y la diversidad del hecho religioso, valorándola como una realidad presente en las culturas que se expresan de diferentes formas en las sociedades plurales.", isMinimum: true }],
+  "ce-bach-6": [{ id: "crit-bach-6.1", description: "6.1. Reconocer las características propias del saber teológico, en cuanto a su método, fuentes y contenido, identificando las semejanzas y diferencias con otros saberes, en especial con la ciencia, y valorando sus aportaciones éticas.", isMinimum: true }]
+};
+
+// Criterios de evaluación para Bachillerato 2º
+export const CRITERIOS_BACHILLERATO_2: Record<string, Criterio[]> = {
+  "ce-bach-1": [{ id: "crit-bach-1.2", description: "1.2. Reconocer los elementos esenciales de un proyecto vital en clave vocacional y profesional desde la autonomy, la libertad y la responsabilidad social, con una actitud sincera de búsqueda de la verdad, teniendo en cuenta la propuesta cristiana y los valores sociales.", isMinimum: true }],
+  "ce-bach-2": [{ id: "crit-bach-2.2", description: "2.2. Distinguir los principios fundamentales del mensaje social cristiano, contrastándolos con otros humanismos e ideologías contemporáneas, aplicándolos a diferentes situaciones sociales.", isMinimum: true }],
+  "ce-bach-3": [{ id: "crit-bach-3.2", description: "3.2. Diseñar proyectos personales y comunitarios que promuevan la plenitud humana y la transformación social, cultivando la responsabilidad individual, la justicia social y la ecología integral.", isMinimum: true }],
+  "ce-bach-4": [{ id: "crit-bach-4.2", description: "4.2. Participar activamente en la creación cultural con sentido crítico, desarrollando sentimientos de pertenencia a la propia tradición y construyendo la diversidad cultural desde criterios humanizadores propios del Evangelio.", isMinimum: true }],
+  "ce-bach-5": [{ id: "crit-bach-5.2", description: "5.2. Valorar la experiencia cristiana manifestada en Jesucristo y en tantos testigos a lo largo de la historia, como respuesta plena a las cuestiones vitales y de sentido, en diálogo interdisciplinar con propuestas filosóficas diversas.", isMinimum: true }],
+  "ce-bach-6": [{ id: "crit-bach-6.2", description: "6.2. Discernir los desafíos de la civilización actual, estableciendo las contribuciones que tanto la ciencia como la teología pueden realizar transformación social, desde una mutua colaboración.", isMinimum: true }]
+};
 
 // Criterios de evaluación para 1º ESO
 export const CRITERIOS_ESO_1: Record<string, Criterio[]> = {

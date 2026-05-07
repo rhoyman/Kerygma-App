@@ -46,7 +46,9 @@ import {
   ClipboardList,
   Github
 } from 'lucide-react';
-import { CurriculumBlock, Competencia, SaberBásico, Criterio, Activity, UnitPlan } from './types';
+import { CurriculumBlock, Competencia, SaberBásico, Criterio, Activity, UnitPlan, EvaluationInstrument } from './types';
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import { DEFAULT_CURRICULUM } from './data/curriculumDefaults';
 import { 
   STAGE_LEVELS, 
@@ -73,7 +75,9 @@ import {
   CRITERIOS_ESO_3,
   CRITERIOS_ESO_4,
   SABERES_ESO_1_2,
-  SABERES_ESO_3_4
+  SABERES_ESO_3_4,
+  CRITERIOS_BACHILLERATO_1,
+  CRITERIOS_BACHILLERATO_2
 } from './data/curriculumOfficial';
 import { 
   suggestConcrecion, 
@@ -85,6 +89,7 @@ import {
   regenerateActivity,
   regenerateFinalProduct,
   generateEvaluationInstruments,
+  improveInstrument,
   generateDiversityMeasures,
   isAIConfigured
 } from './services/geminiService';
@@ -232,8 +237,11 @@ export default function App() {
   const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
   const [isExporting, setIsExporting] = useState<boolean>(false);
   const [exportContent, setExportContent] = useState<string | null>(null);
+  const [exportingBlock, setExportingBlock] = useState<CurriculumBlock | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [deleteConfirmation, setDeleteConfirmation] = useState<string | null>(null);
+  const [editingInstrument, setEditingInstrument] = useState<EvaluationInstrument | null>(null);
+  const [isImprovingInstrument, setIsImprovingInstrument] = useState(false);
   const tokenRef = useRef<string | null>(null);
 
   const handleExport = (blockToExport?: CurriculumBlock) => {
@@ -246,7 +254,300 @@ export default function App() {
     }
     
     const content = generateMarkdownContent(targetBlock);
+    setExportingBlock(targetBlock);
     setExportContent(content);
+  };
+
+  const formatLevelPDF = (level: string, stage: string) => {
+    if (stage === 'Infantil') return `${level} AÑOS`;
+    if (stage === 'Bachillerato') return `${level} BACH`;
+    return `${level} ${stage.toUpperCase()}`;
+  };
+
+  const handleExportPDF = (blockToExport?: CurriculumBlock) => {
+    const targetBlock = blockToExport || activeBlock;
+    if (!targetBlock) return;
+
+    if (!targetBlock.activities || targetBlock.activities.length === 0) {
+      alert("Debes completar la situación de aprendizaje hasta el paso de Secuenciación para exportar.");
+      return;
+    }
+
+    try {
+      const doc = new jsPDF();
+      const title = targetBlock.title || 'Situación de Aprendizaje';
+      const subtitle = `Religión Católica - ${formatLevelPDF(targetBlock.level, targetBlock.stage)}`;
+      
+      // Configure fonts
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(22);
+      doc.setTextColor(30, 41, 59); // gray-800
+      doc.text("KERYGMA APP", 105, 15, { align: 'center' });
+      
+      doc.setFontSize(16);
+      doc.text(title.toUpperCase(), 105, 25, { align: 'center' });
+      
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(12);
+      doc.setTextColor(100, 116, 139); // gray-500
+      doc.text(subtitle, 105, 32, { align: 'center' });
+      
+      doc.setDrawColor(226, 232, 240); // gray-200
+      doc.line(20, 38, 190, 38);
+
+      let currentY = 48;
+
+      // 1. CONTEXTUALIZACIÓN
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(14);
+      doc.setTextColor(30, 41, 59);
+      doc.text("1. CONTEXTUALIZACIÓN Y JUSTIFICACIÓN", 20, currentY);
+      currentY += 8;
+
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+      const justification = targetBlock.plan?.justification || "No se ha proporcionado justificación.";
+      const splitJust = doc.splitTextToSize(justification, 170);
+      doc.text(splitJust, 20, currentY);
+      currentY += (splitJust.length * 5) + 10;
+
+      // 2. COMPETENCIAS Y CRITERIOS
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(14);
+      doc.text("2. COMPETENCIAS ESPECÍFICAS Y CRITERIOS DE EVALUACIÓN", 20, currentY);
+      currentY += 8;
+
+      const compData: any[][] = [];
+      targetBlock.competenciasEspecíficas.forEach(ce => {
+        const selectedCrits = ce.criteriosEvaluación.filter(c => c.selected);
+        if (selectedCrits.length > 0) {
+          const compText = ce.description.replace(/\s+/g, ' ').trim();
+          
+          const critText = selectedCrits.map(c => c.description.replace(/\s+/g, ' ').trim()).join('\n\n');
+
+          compData.push([compText, critText]);
+        }
+      });
+
+      autoTable(doc, {
+        startY: currentY,
+        head: [['COMPETENCIA ESPECÍFICA', 'CRITERIOS DE EVALUACIÓN']],
+        body: compData,
+        theme: 'grid',
+        margin: { left: 20, right: 20 },
+        headStyles: { 
+          fillColor: [79, 70, 229], 
+          textColor: 255,
+          fontStyle: 'bold',
+          halign: 'center'
+        },
+        styles: { 
+          fontSize: 8, 
+          cellPadding: 4,
+          valign: 'top',
+          halign: 'left',
+          lineColor: [226, 232, 240],
+          lineWidth: 0.1,
+          overflow: 'linebreak'
+        },
+        columnStyles: { 
+          0: { cellWidth: 55, fontStyle: 'bold' }, 
+          1: { cellWidth: 115 } 
+        }
+      });
+
+      currentY = (doc as any).lastAutoTable.finalY + 15;
+
+      // 3. SABERES BÁSICOS
+      if (currentY > 240) { doc.addPage(); currentY = 20; }
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(14);
+      doc.text("3. SABERES BÁSICOS", 20, currentY);
+      currentY += 8;
+
+      const saberesData: any[][] = [];
+      const selectedSaberes = targetBlock.saberesBásicos.filter(s => s.selected);
+      selectedSaberes.forEach(s => {
+        saberesData.push([s.category, s.description.replace(/\s+/g, ' ').trim()]);
+      });
+
+      autoTable(doc, {
+        startY: currentY,
+        head: [['BLOQUE / CATEGORÍA', 'SABER BÁSICO']],
+        body: saberesData,
+        theme: 'grid',
+        margin: { left: 20, right: 20 },
+        headStyles: { 
+          fillColor: [16, 185, 129], 
+          textColor: 255,
+          fontStyle: 'bold',
+          halign: 'center'
+        },
+        styles: { 
+          fontSize: 8, 
+          cellPadding: 4,
+          valign: 'top',
+          halign: 'left',
+          lineColor: [226, 232, 240],
+          lineWidth: 0.1,
+          overflow: 'linebreak'
+        },
+        columnStyles: { 
+          0: { cellWidth: 50, fontStyle: 'bold' }, 
+          1: { cellWidth: 120 } 
+        }
+      });
+
+      currentY = (doc as any).lastAutoTable.finalY + 15;
+
+      // 4. SECUENCIACIÓN DIDÁCTICA
+      if (currentY > 220) { doc.addPage(); currentY = 20; }
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(14);
+      doc.text("4. SECUENCIACIÓN DE ACTIVIDADES", 20, currentY);
+      currentY += 8;
+
+      const actData: any[][] = [];
+      targetBlock.activities?.forEach((act, idx) => {
+        actData.push([
+          `${idx + 1}. ${act.title}\n(${act.category?.toUpperCase() || ''})`,
+          `${act.description}\n\nRECURSOS: ${act.resources}\nTIEMPO: ${act.timing}`
+        ]);
+      });
+
+      autoTable(doc, {
+        startY: currentY,
+        head: [['ACTIVIDAD', 'DESCRIPCIÓN Y RECURSOS']],
+        body: actData,
+        theme: 'grid',
+        margin: { left: 20, right: 20 },
+        headStyles: { 
+          fillColor: [244, 63, 94], 
+          textColor: 255,
+          fontStyle: 'bold',
+          halign: 'center'
+        },
+        styles: { 
+          fontSize: 8, 
+          cellPadding: 4,
+          valign: 'top',
+          halign: 'left',
+          lineColor: [226, 232, 240],
+          lineWidth: 0.1,
+          overflow: 'linebreak'
+        },
+        columnStyles: { 
+          0: { cellWidth: 45, fontStyle: 'bold' }, 
+          1: { cellWidth: 125 } 
+        }
+      });
+
+      currentY = (doc as any).lastAutoTable.finalY + 15;
+
+      // 5. PRODUCTO FINAL Y EVALUACIÓN
+      if (currentY > 220) { doc.addPage(); currentY = 20; }
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(14);
+      doc.text("5. PRODUCTO FINAL Y EVALUACIÓN", 20, currentY);
+      currentY += 8;
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(11);
+      doc.text(`Producto Final: ${targetBlock.plan?.finalProductTitle || 'Sin título'}`, 20, currentY);
+      currentY += 6;
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+      const prodDesc = targetBlock.plan?.finalProductDescription || "";
+      const splitProd = doc.splitTextToSize(prodDesc, 170);
+      doc.text(splitProd, 20, currentY);
+      currentY += (splitProd.length * 5) + 8;
+
+      const instData: any[][] = [];
+      targetBlock.evaluation?.instruments.forEach(inst => {
+        instData.push([inst.name, inst.description]);
+      });
+
+      if (instData.length > 0) {
+          autoTable(doc, {
+            startY: currentY,
+            head: [['INSTRUMENTO DE EVALUACIÓN', 'DESCRIPCIÓN']],
+            body: instData,
+            theme: 'grid',
+            margin: { left: 20, right: 20 },
+            headStyles: { 
+              fillColor: [59, 130, 246], 
+              textColor: 255,
+              fontStyle: 'bold',
+              halign: 'center'
+            },
+            styles: { 
+              fontSize: 8, 
+              cellPadding: 4,
+              valign: 'top',
+              halign: 'left',
+              lineColor: [226, 232, 240],
+              lineWidth: 0.1,
+              overflow: 'linebreak'
+            },
+            columnStyles: { 
+              0: { cellWidth: 50, fontStyle: 'bold' },
+              1: { cellWidth: 'auto' }
+            }
+          });
+        currentY = (doc as any).lastAutoTable.finalY + 15;
+      }
+
+      // 6. ATENCIÓN A LA DIVERSIDAD
+      if (targetBlock.diversity && targetBlock.diversity.measures.length > 0) {
+        if (currentY > 220) { doc.addPage(); currentY = 20; }
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(14);
+        doc.text("6. ATENCIÓN A LA DIVERSIDAD", 20, currentY);
+        currentY += 8;
+
+        const divData: any[][] = [];
+        targetBlock.diversity.measures.forEach(m => {
+          divData.push([m.type, m.need, m.measure]);
+        });
+
+        autoTable(doc, {
+          startY: currentY,
+          head: [['TIPO', 'NECESIDAD', 'MEDIDA SUGERIDA']],
+          body: divData,
+          theme: 'grid',
+          margin: { left: 20, right: 20 },
+          headStyles: { 
+            fillColor: [168, 85, 247], 
+            textColor: 255,
+            fontStyle: 'bold',
+            halign: 'center'
+          },
+          styles: { 
+            fontSize: 8, 
+            cellPadding: 4,
+            valign: 'top',
+            halign: 'left',
+            lineColor: [226, 232, 240],
+            lineWidth: 0.1,
+            overflow: 'linebreak'
+          },
+          columnStyles: { 
+            0: { cellWidth: 35, fontStyle: 'bold' },
+            1: { cellWidth: 45 },
+            2: { cellWidth: 'auto' }
+          }
+        });
+      }
+
+      // Save the PDF
+      const fileName = `SdA_${targetBlock.stage}_${targetBlock.level}_${title.replace(/\s+/g, '_')}.pdf`;
+      doc.save(fileName);
+      
+      alert(`¡PDF "${fileName}" generado con éxito!`);
+    } catch (error) {
+      console.error("Error generating PDF:", error);
+      alert("Hubo un error al generar el PDF. Revisa la consola.");
+    }
   };
 
   function generateMarkdownContent(block: CurriculumBlock) {
@@ -259,8 +560,7 @@ export default function App() {
       if (selectedCrits.length > 0) {
         content += `### ${ce.description}\n\n`;
         selectedCrits.forEach(crit => {
-          const minTag = crit.isMinimum ? ' [MÍNIMO]' : '';
-          content += `- **Criterio:** ${crit.description}${minTag}\n`;
+          content += `- **Criterio:** ${crit.description}\n`;
           if (crit.concreción) {
             content += `  - *Concreción:* ${crit.concreción}\n`;
           }
@@ -280,8 +580,7 @@ export default function App() {
     if (selectedSaberes.length > 0) {
       content += `## Saberes Básicos\n\n`;
       selectedSaberes.forEach(sb => {
-        const minTag = sb.isMinimum ? ' [MÍNIMO]' : '';
-        content += `### [${sb.category}] ${sb.description}${minTag}\n\n`;
+        content += `### [${sb.category}] ${sb.description}\n\n`;
         if (sb.concreción) {
           content += `${sb.concreción}\n\n`;
         }
@@ -438,16 +737,29 @@ export default function App() {
         return { ...data, id: doc.id };
       });
       
-      // Sync with cloud
-      if (remoteBlocks.length >= 0) {
-        setBlocks(remoteBlocks);
-        setActiveBlockId(current => {
-          if (!current || !remoteBlocks.find(b => b.id === current)) {
-            return remoteBlocks[0]?.id || '';
+      // Sync with cloud using merge strategy
+      setBlocks(currentBlocks => {
+        const mergedMap = new Map<string, CurriculumBlock>();
+        
+        // Use remote as base
+        remoteBlocks.forEach(rb => mergedMap.set(rb.id, rb));
+        
+        // Re-apply local blocks that are pending sync or new
+        currentBlocks.forEach(lb => {
+          if (syncTimeoutRef.current[lb.id] || !mergedMap.has(lb.id)) {
+            mergedMap.set(lb.id, lb);
           }
-          return current;
         });
-      }
+        
+        const mergedArray = Array.from(mergedMap.values());
+        
+        // Secondary fix for active selection
+        if (mergedArray.length > 0 && (!activeBlockId || !mergedArray.find(b => b.id === activeBlockId))) {
+          setTimeout(() => setActiveBlockId(mergedArray[0].id), 0);
+        }
+        
+        return mergedArray;
+      });
 
       setIsFirestoreLoading(false);
     }, (error) => {
@@ -543,6 +855,9 @@ export default function App() {
               else if (activeBlock.level === '4º Primaria') criteria = CRITERIOS_PRIMARIA_4[ce.id] || [];
               else if (activeBlock.level === '5º Primaria') criteria = CRITERIOS_PRIMARIA_5[ce.id] || [];
               else if (activeBlock.level === '6º Primaria') criteria = CRITERIOS_PRIMARIA_6[ce.id] || [];
+            } else if (activeBlock.stage === 'Bachillerato') {
+              if (activeBlock.level === '1º Bachillerato') criteria = CRITERIOS_BACHILLERATO_1[ce.id] || [];
+              else if (activeBlock.level === '2º Bachillerato') criteria = CRITERIOS_BACHILLERATO_2[ce.id] || [];
             }
             
             return { id: ce.id, description: ce.description, criterios: criteria };
@@ -560,52 +875,56 @@ export default function App() {
 
       const result = await analyzeExistingContent(activeBlock.materials, context);
 
-      let updatedBlock: CurriculumBlock | null = null;
-      setBlocks(prev => prev.map(b => {
-        if (b.id !== activeBlock.id) return b;
-        
-        const currentCompetencias = activeBlock.stage === 'Secundaria' ? COMPETENCIAS_ESO : activeBlock.stage === 'Infantil' ? COMPETENCIAS_INFANTIL : activeBlock.stage === 'Primaria' ? COMPETENCIAS_PRIMARIA : [];
+      setBlocks(prev => {
+        const next = prev.map(b => {
+          if (b.id !== activeBlock.id) return b;
+          
+          const currentCompetencias = activeBlock.stage === 'Secundaria' ? COMPETENCIAS_ESO : activeBlock.stage === 'Infantil' ? COMPETENCIAS_INFANTIL : activeBlock.stage === 'Primaria' ? COMPETENCIAS_PRIMARIA : activeBlock.stage === 'Bachillerato' ? COMPETENCIAS_BACHILLERATO : [];
 
-        const updated = {
-          ...b,
-          competenciasEspecíficas: currentCompetencias
-            .map(ce => {
-              let allCriteria: Criterio[] = [];
-              if (activeBlock.stage === 'Secundaria') {
-                if (activeBlock.level === '1º ESO') allCriteria = CRITERIOS_ESO_1[ce.id] || [];
-                else if (activeBlock.level === '2º ESO') allCriteria = CRITERIOS_ESO_2[ce.id] || [];
-                else if (activeBlock.level === '3º ESO') allCriteria = CRITERIOS_ESO_3[ce.id] || [];
-                else if (activeBlock.level === '4º ESO') allCriteria = CRITERIOS_ESO_4[ce.id] || [];
-              } else if (activeBlock.stage === 'Infantil') {
-                if (activeBlock.level === '3 años') allCriteria = CRITERIOS_INFANTIL_3ANOS[ce.id] || [];
-                else if (activeBlock.level === '4 años') allCriteria = CRITERIOS_INFANTIL_4ANOS[ce.id] || [];
-                else if (activeBlock.level === '5 años') allCriteria = CRITERIOS_INFANTIL_5ANOS[ce.id] || [];
-              } else if (activeBlock.stage === 'Primaria') {
-                if (activeBlock.level === '1º Primaria') allCriteria = CRITERIOS_PRIMARIA_1[ce.id] || [];
-                else if (activeBlock.level === '2º Primaria') allCriteria = CRITERIOS_PRIMARIA_2[ce.id] || [];
-                else if (activeBlock.level === '3º Primaria') allCriteria = CRITERIOS_PRIMARIA_3[ce.id] || [];
-                else if (activeBlock.level === '4º Primaria') allCriteria = CRITERIOS_PRIMARIA_4[ce.id] || [];
-                else if (activeBlock.level === '5º Primaria') allCriteria = CRITERIOS_PRIMARIA_5[ce.id] || [];
-                else if (activeBlock.level === '6º Primaria') allCriteria = CRITERIOS_PRIMARIA_6[ce.id] || [];
-              }
-              
-              return {
-                ...ce,
-                criteriosEvaluación: allCriteria.map(crit => ({
-                  ...crit,
-                  selected: result.critIds.includes(crit.id)
-                }))
-              };
-            }),
-          saberesBásicos: context.saberes.map(s => ({
-            ...s,
-            selected: result.saberIds.includes(s.id)
-          }))
-        };
-        updatedBlock = updated;
-        return updated;
-      }));
-      if (updatedBlock) syncBlock(updatedBlock);
+          const updated = {
+            ...b,
+            competenciasEspecíficas: currentCompetencias
+              .map(ce => {
+                let allCriteria: Criterio[] = [];
+                if (activeBlock.stage === 'Secundaria') {
+                  if (activeBlock.level === '1º ESO') allCriteria = CRITERIOS_ESO_1[ce.id] || [];
+                  else if (activeBlock.level === '2º ESO') allCriteria = CRITERIOS_ESO_2[ce.id] || [];
+                  else if (activeBlock.level === '3º ESO') allCriteria = CRITERIOS_ESO_3[ce.id] || [];
+                  else if (activeBlock.level === '4º ESO') allCriteria = CRITERIOS_ESO_4[ce.id] || [];
+                } else if (activeBlock.stage === 'Infantil') {
+                  if (activeBlock.level === '3 años') allCriteria = CRITERIOS_INFANTIL_3ANOS[ce.id] || [];
+                  else if (activeBlock.level === '4 años') allCriteria = CRITERIOS_INFANTIL_4ANOS[ce.id] || [];
+                  else if (activeBlock.level === '5 años') allCriteria = CRITERIOS_INFANTIL_5ANOS[ce.id] || [];
+                } else if (activeBlock.stage === 'Primaria') {
+                  if (activeBlock.level === '1º Primaria') allCriteria = CRITERIOS_PRIMARIA_1[ce.id] || [];
+                  else if (activeBlock.level === '2º Primaria') allCriteria = CRITERIOS_PRIMARIA_2[ce.id] || [];
+                  else if (activeBlock.level === '3º Primaria') allCriteria = CRITERIOS_PRIMARIA_3[ce.id] || [];
+                  else if (activeBlock.level === '4º Primaria') allCriteria = CRITERIOS_PRIMARIA_4[ce.id] || [];
+                  else if (activeBlock.level === '5º Primaria') allCriteria = CRITERIOS_PRIMARIA_5[ce.id] || [];
+                  else if (activeBlock.level === '6º Primaria') allCriteria = CRITERIOS_PRIMARIA_6[ce.id] || [];
+                } else if (activeBlock.stage === 'Bachillerato') {
+                  if (activeBlock.level === '1º Bachillerato') allCriteria = CRITERIOS_BACHILLERATO_1[ce.id] || [];
+                  else if (activeBlock.level === '2º Bachillerato') allCriteria = CRITERIOS_BACHILLERATO_2[ce.id] || [];
+                }
+                
+                return {
+                  ...ce,
+                  criteriosEvaluación: allCriteria.map(crit => ({
+                    ...crit,
+                    selected: result.critIds.includes(crit.id)
+                  }))
+                };
+              }),
+            saberesBásicos: context.saberes.map(s => ({
+              ...s,
+              selected: result.saberIds.includes(s.id)
+            }))
+          };
+          setTimeout(() => syncBlock(updated), 0);
+          return updated;
+        });
+        return next;
+      });
     } catch (err) {
       console.error(err);
     } finally {
@@ -626,7 +945,6 @@ export default function App() {
     const saberesContext = activeBlock.saberesBásicos.map(s => ({ id: s.id, description: s.description }));
     const links = await evaluateLinks(crit.description, saberesContext);
     
-    let updatedBlock: CurriculumBlock | null = null;
     setBlocks(prev => {
       const next = prev.map(b => {
         if (b.id !== activeBlock.id) return b;
@@ -642,19 +960,16 @@ export default function App() {
             };
           })
         };
-        updatedBlock = updated;
+        setTimeout(() => syncBlock(updated), 0);
         return updated;
       });
       return next;
     });
-    
-    if (updatedBlock) syncBlock(updatedBlock);
     setIsEvaluating(null);
   };
 
   const toggleSaberLink = (ceId: string, critId: string, saberId: string) => {
     if (!activeBlock) return;
-    let updatedBlock: CurriculumBlock | null = null;
     setBlocks(prev => {
       const next = prev.map(b => {
         if (b.id !== activeBlock.id) return b;
@@ -675,16 +990,14 @@ export default function App() {
             };
           })
         };
-        updatedBlock = updated;
+        setTimeout(() => syncBlock(updated), 0);
         return updated;
       });
       return next;
     });
-    if (updatedBlock) syncBlock(updatedBlock);
   };
 
   const updateBlock = (blockId: string, updates: Partial<CurriculumBlock>) => {
-    let updatedBlock: CurriculumBlock | null = null;
     setBlocks(prev => {
       const block = prev.find(b => b.id === blockId);
       if (!block) return prev;
@@ -696,19 +1009,17 @@ export default function App() {
       }
 
       const updated = { ...block, ...updates, id: targetId };
-      updatedBlock = updated;
       
-      const next = prev.map(b => b.id === blockId ? updated : b);
-      return next;
+      // Trigger sync and ID management
+      setTimeout(() => {
+        syncBlock(updated);
+        if (targetId !== blockId && activeBlockId === blockId) {
+          setActiveBlockId(targetId);
+        }
+      }, 0);
+      
+      return prev.map(b => b.id === blockId ? updated : b);
     });
-
-    if (updatedBlock) {
-      syncBlock(updatedBlock);
-      const newId = (updatedBlock as CurriculumBlock).id;
-      if (newId !== blockId && activeBlockId === blockId) {
-        setActiveBlockId(newId);
-      }
-    }
   };
 
   const handleStageChange = (blockId: string, stage: string) => {
@@ -818,10 +1129,22 @@ export default function App() {
       }
       updates.saberesBásicos = SABERES_INFANTIL;
     } else if (stage === 'Bachillerato') {
-      updates.competenciasEspecíficas = COMPETENCIAS_BACHILLERATO.map(ce => ({
-        ...ce,
-        criteriosEvaluación: []
-      }));
+      if (level === '1º Bachillerato') {
+        updates.competenciasEspecíficas = COMPETENCIAS_BACHILLERATO.map(ce => ({
+          ...ce,
+          criteriosEvaluación: CRITERIOS_BACHILLERATO_1[ce.id] || []
+        }));
+      } else if (level === '2º Bachillerato') {
+        updates.competenciasEspecíficas = COMPETENCIAS_BACHILLERATO.map(ce => ({
+          ...ce,
+          criteriosEvaluación: CRITERIOS_BACHILLERATO_2[ce.id] || []
+        }));
+      } else {
+        updates.competenciasEspecíficas = COMPETENCIAS_BACHILLERATO.map(ce => ({
+          ...ce,
+          criteriosEvaluación: []
+        }));
+      }
       updates.saberesBásicos = SABERES_BACHILLERATO;
     } else if (stage === 'Primaria') {
       if (level === '1º Primaria') {
@@ -878,7 +1201,6 @@ export default function App() {
   };
 
   const updateConcrecion = (blockId: string, type: 'criterio' | 'saber', parentId: string, id: string, value: string) => {
-    let updatedBlock: CurriculumBlock | null = null;
     setBlocks(prev => {
       const next = prev.map(b => {
         if (b.id !== blockId) return b;
@@ -899,12 +1221,11 @@ export default function App() {
             sb.id === id ? { ...sb, concreción: value } : sb
           );
         }
-        updatedBlock = newBlock;
+        setTimeout(() => syncBlock(newBlock), 0);
         return newBlock;
       });
       return next;
     });
-    if (updatedBlock) syncBlock(updatedBlock);
   };
 
   const handleSuggest = async (type: 'criterio' | 'saber', parentId: string, item: Criterio | SaberBásico) => {
@@ -916,7 +1237,6 @@ export default function App() {
   };
 
   const toggleElementSelection = (blockId: string, type: 'criterio' | 'saber', parentId: string, id: string) => {
-    let updatedBlock: CurriculumBlock | null = null;
     setBlocks(prev => {
       const next = prev.map(b => {
         if (b.id !== blockId) return b;
@@ -937,12 +1257,11 @@ export default function App() {
             s.id === id ? { ...s, selected: !s.selected } : s
           );
         }
-        updatedBlock = nb;
+        setTimeout(() => syncBlock(nb), 0);
         return nb;
       });
       return next;
     });
-    if (updatedBlock) syncBlock(updatedBlock);
   };
 
   const getSelectedCounts = (block: CurriculumBlock) => {
@@ -1029,7 +1348,6 @@ export default function App() {
     setIsEvaluating('global-saberes');
     const suggestedIds = await suggestSaberesForCriteria(selectedCriteriaDescriptions, activeBlock.saberesBásicos);
     
-    let updatedBlock: CurriculumBlock | null = null;
     setBlocks(prev => {
       const next = prev.map(b => {
         if (b.id !== activeBlock.id) return b;
@@ -1040,12 +1358,11 @@ export default function App() {
             selected: suggestedIds.length > 0 ? suggestedIds.includes(s.id) : s.selected
           }))
         };
-        updatedBlock = updated;
+        setTimeout(() => syncBlock(updated), 0);
         return updated;
       });
       return next;
     });
-    if (updatedBlock) syncBlock(updatedBlock);
     setIsEvaluating(null);
   };
 
@@ -1178,11 +1495,55 @@ export default function App() {
     updateBlock(activeBlock.id, { 
       step: 'evaluation',
       evaluation: {
-        instruments: result.instruments.map((ins, i) => ({ ...ins, id: `inst-${i}` })),
+        instruments: result.instruments.map((ins, i) => ({ ...ins, id: `inst-${Date.now()}-${i}` })),
         generalCriteria: ''
       }
     });
     setIsAnalyzing(false);
+  };
+
+  const handleImproveInstrument = async () => {
+    if (!editingInstrument || !activeBlock || !activeBlock.plan) return;
+    setIsImprovingInstrument(true);
+    try {
+      const result = await improveInstrument(
+        editingInstrument.name,
+        editingInstrument.description,
+        activeBlock.activities?.filter((_, i) => editingInstrument.linkedActivitiesIds.includes(i.toString())).map(a => ({ title: a.title, description: a.description })) || [],
+        activeBlock.plan.suggestedContent
+      );
+      setEditingInstrument({
+        ...editingInstrument,
+        name: result.name,
+        description: result.description,
+        canvaPrompt: result.canvaPrompt
+      });
+    } catch (e) {
+      console.error(e);
+      alert("Hubo un error al mejorar el instrumento con IA.");
+    } finally {
+      setIsImprovingInstrument(false);
+    }
+  };
+
+  const handleSaveInstrument = () => {
+    if (!editingInstrument || !activeBlock) return;
+    const instruments = [...(activeBlock.evaluation?.instruments || [])];
+    const index = instruments.findIndex(i => i.id === editingInstrument.id);
+    
+    if (index >= 0) {
+      instruments[index] = editingInstrument;
+    } else {
+      instruments.push(editingInstrument);
+    }
+    
+    updateBlock(activeBlock.id, { 
+      evaluation: { 
+        ...(activeBlock.evaluation || { instruments: [] }), 
+        instruments 
+      } 
+    });
+    setEditingInstrument(null);
   };
 
   const handleGenerateDiversityAction = async (needs: string) => {
@@ -1444,23 +1805,22 @@ export default function App() {
                     <button 
                       onClick={() => handleExport(block)}
                       disabled={block.step !== 'sequencing'}
-                      className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-[9px] font-bold uppercase tracking-widest transition-colors rounded-bl-lg border-r border-white/10 ${
+                      className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-[9px] font-bold uppercase tracking-widest transition-colors border-r border-white/10 ${
                         block.step === 'sequencing'
-                          ? 'hover:bg-white/10 cursor-pointer'
-                          : 'opacity-40 cursor-not-allowed'
+                          ? 'hover:bg-white/10 cursor-pointer text-white'
+                          : 'opacity-40 cursor-not-allowed text-white/50'
                       }`}
-                      title={block.step !== 'sequencing' ? 'Completa la secuenciación para exportar' : 'Exportar contenido'}
+                      title={block.step !== 'sequencing' ? 'Completa la secuenciación para exportar' : 'Exportar SdA'}
                     >
-                      <ClipboardList className="w-3 h-3" />
+                      <Download className="w-3 h-3" />
                       <span>Exportar</span>
                     </button>
-                    <div className="w-[1px] bg-white/10" />
                     <button 
                       onClick={(e) => {
                         e.stopPropagation();
                         removeBlock(block.id);
                       }}
-                      className="flex-1 flex items-center justify-center gap-1.5 py-2 text-[9px] font-bold uppercase tracking-widest text-red-100 hover:bg-red-500 rounded-br-lg transition-colors shadow-none"
+                      className="flex-1 flex items-center justify-center gap-1.5 py-2 text-[9px] font-bold uppercase tracking-widest text-red-100 hover:bg-red-500 transition-colors shadow-none"
                     >
                       <Trash2 className="w-3 h-3" />
                       <span>Eliminar</span>
@@ -1503,9 +1863,9 @@ export default function App() {
             {activeBlock && (activeBlock.creationMode || activeBlock.competenciasEspecíficas.length > 0) ? (
               <div className="flex items-center gap-3 w-full max-w-xl">
                 <div className="flex items-center gap-2 px-3 py-1 bg-gray-100 rounded-full shrink-0">
-                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{activeBlock.stage}</span>
-                  <div className="w-1 h-1 bg-gray-300 rounded-full" />
                   <span className="text-xs font-bold text-primary">{formatLevelDisplay(activeBlock.level, activeBlock.stage)}</span>
+                  <div className="w-1 h-1 bg-gray-300 rounded-full" />
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{activeBlock.stage}</span>
                 </div>
                 
                 <input
@@ -2181,135 +2541,73 @@ export default function App() {
                         initial={{ opacity: 0, scale: 0.95 }}
                         animate={{ opacity: 1, scale: 1 }}
                         transition={{ delay: idx * 0.1 }}
-                        className="bg-white rounded-3xl border border-gray-100 p-6 shadow-xl shadow-gray-200/30 flex flex-col gap-4 group"
+                        onClick={() => setEditingInstrument(inv)}
+                        className="bg-white rounded-3xl border border-gray-100 p-6 shadow-xl shadow-gray-200/30 flex flex-col gap-4 group cursor-pointer hover:border-primary/20 transition-all relative"
                       >
-                        <div className="flex items-start justify-between">
-                          <div className="space-y-1 flex-1">
-                            <input 
-                              type="text"
-                              value={inv.name}
-                              onChange={(e) => {
-                                const newInst = [...activeBlock.evaluation!.instruments];
-                                newInst[idx].name = e.target.value;
-                                updateBlock(activeBlock.id, { evaluation: { ...activeBlock.evaluation!, instruments: newInst } });
-                              }}
-                              className="w-full bg-transparent border-none p-0 focus:ring-0 font-bold text-lg text-primary"
-                            />
-                            <div className="flex gap-1 flex-wrap">
-                              {inv.linkedActivitiesIds.map(actIdx => (
-                                <span key={actIdx} className="text-[8px] font-bold bg-primary/5 text-primary/60 px-1.5 py-0.5 rounded uppercase">
-                                  Act. {Number(actIdx) + 1}
-                                </span>
-                              ))}
-                            </div>
-                          </div>
-                          <button 
-                             onClick={() => {
+                         <button 
+                             onClick={(e) => {
+                               e.stopPropagation();
                                const newInst = activeBlock.evaluation!.instruments.filter((_, i) => i !== idx);
                                updateBlock(activeBlock.id, { evaluation: { ...activeBlock.evaluation!, instruments: newInst } });
                              }}
-                             className="p-2 text-gray-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
+                             className="absolute top-4 right-4 p-2 text-gray-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100 z-10"
                           >
                             <X className="w-4 h-4" />
                           </button>
+
+                        <div className="space-y-1">
+                          <h3 className="font-bold text-lg text-primary">{inv.name}</h3>
+                          <div className="flex gap-1 flex-wrap">
+                            {inv.linkedActivitiesIds.map(actIdx => (
+                              <span key={actIdx} className="text-[8px] font-bold bg-primary/5 text-primary/60 px-1.5 py-0.5 rounded uppercase">
+                                Act. {Number(actIdx) + 1}
+                              </span>
+                            ))}
+                          </div>
                         </div>
                         
-                        <AutoResizeTextArea
-                          value={inv.description}
-                          onChange={(e) => {
-                            const newInst = [...activeBlock.evaluation!.instruments];
-                            newInst[idx].description = e.target.value;
-                            updateBlock(activeBlock.id, { evaluation: { ...activeBlock.evaluation!, instruments: newInst } });
-                          }}
-                          className="text-sm text-gray-600 leading-relaxed bg-transparent border-none p-0 focus:ring-0"
-                        />
+                        <p className="text-sm text-gray-600 leading-relaxed line-clamp-3">
+                          {inv.description}
+                        </p>
 
-                        {inv.canvaPrompt && (
-                          <div className="mt-auto pt-4 border-t border-gray-50 flex items-center justify-between gap-3">
-                            <div className="flex-1 overflow-hidden">
-                              <p className="text-[9px] font-bold text-accent uppercase tracking-widest mb-1 flex items-center gap-1">
-                                <Sparkles className="w-3 h-3" /> Exportar descripción a Canva
-                              </p>
-                              <p className="text-[10px] text-gray-400 truncate">{inv.canvaPrompt}</p>
-                            </div>
-                            <button
-                              onClick={() => {
-                                navigator.clipboard.writeText(inv.canvaPrompt || '');
-                                setCopiedId(inv.id);
-                                setTimeout(() => setCopiedId(null), 2000);
-                              }}
-                              className="shrink-0 p-2 bg-gray-50 hover:bg-accent/10 hover:text-accent rounded-xl transition-all"
-                              title="Copiar prompt para Canva"
-                            >
-                              {copiedId === inv.id ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
-                            </button>
-                          </div>
-                        )}
+                        <div className="mt-auto pt-4 flex items-center justify-between">
+                           <span className="text-[10px] font-bold text-primary/40 uppercase tracking-widest flex items-center gap-1">
+                             <PenTool className="w-3 h-3" /> Editar detalles
+                           </span>
+                           {inv.canvaPrompt && (
+                             <div className="flex items-center gap-2">
+                               <Sparkles className="w-3 h-3 text-accent" />
+                             </div>
+                           )}
+                        </div>
                       </motion.div>
                     ))}
                     
                     <button
                       onClick={() => {
-                        const newInst = [...(activeBlock.evaluation?.instruments || []), {
+                        setEditingInstrument({
                           id: `inst-new-${Date.now()}`,
-                          name: 'Nuevo Instrumento',
-                          description: 'Describe cómo vas a evaluar...',
+                          name: '',
+                          description: '',
                           linkedActivitiesIds: []
-                        }];
-                        updateBlock(activeBlock.id, { evaluation: { ...(activeBlock.evaluation || { instruments: [] }), instruments: newInst } });
+                        });
                       }}
-                      className="border-2 border-dashed border-gray-200 rounded-3xl p-6 flex flex-col items-center justify-center gap-3 text-gray-400 hover:border-accent hover:text-accent transition-all"
+                      className="border-2 border-dashed border-gray-200 rounded-3xl p-6 flex flex-col items-center justify-center gap-3 text-gray-400 hover:border-accent hover:text-accent transition-all min-h-[160px]"
                     >
                       <Plus className="w-8 h-8" />
                       <span className="font-bold text-xs uppercase tracking-widest">Añadir Instrumento</span>
                     </button>
+                  </div>
+
+                  <div className="flex justify-center pt-8">
                     <button
-                      onClick={handleGenerateEvaluationAction}
-                      disabled={isAnalyzing}
-                      className="inline-flex items-center gap-2 px-4 py-2 text-xs font-bold uppercase tracking-wider text-accent border border-accent/20 rounded-xl hover:bg-accent/5 transition-all"
+                      onClick={() => updateBlock(activeBlock.id, { step: 'diversity' })}
+                      className="px-8 py-3 bg-primary text-white rounded-2xl font-bold uppercase tracking-widest hover:scale-105 transition-all shadow-lg shadow-primary/20 flex items-center gap-2"
                     >
-                      {isAnalyzing ? <Loader2 className="w-3 h-3 animate-spin" /> : <RotateCw className="w-3 h-3" />}
-                      Regenerar con IA
+                      Continuar a Diversidad <ChevronRight className="w-4 h-4" />
                     </button>
                   </div>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="bg-white rounded-3xl border border-gray-100 p-8 shadow-xl shadow-gray-200/30 space-y-4">
-                      <div className="flex items-center gap-2 text-primary">
-                        <PenTool className="w-5 h-5" />
-                        <h3 className="font-bold uppercase text-[11px] tracking-widest">Tus preferencias</h3>
-                      </div>
-                      <textarea
-                        value={activeBlock.evaluationNotes || ''}
-                        onChange={(e) => updateBlock(activeBlock.id, { evaluationNotes: e.target.value })}
-                        className="w-full text-sm text-gray-600 leading-relaxed bg-transparent border-none p-0 focus:ring-0 outline-none resize-none h-24"
-                        placeholder="Pruebas escritas, trabajos digitales..."
-                      />
-                    </div>
-
-                    <div className="bg-white rounded-3xl border border-gray-100 p-8 shadow-xl shadow-gray-200/30 space-y-4">
-                      <div className="flex items-center gap-2 text-primary">
-                        <Target className="w-5 h-5" />
-                      <h3 className="font-bold uppercase text-[11px] tracking-widest">Observaciones Generales de Evaluación</h3>
-                    </div>
-                    <AutoResizeTextArea
-                      value={activeBlock.evaluation?.generalCriteria || ''}
-                      onChange={(e) => updateBlock(activeBlock.id, { evaluation: { ...activeBlock.evaluation!, generalCriteria: e.target.value } })}
-                      className="w-full text-sm text-gray-600 leading-relaxed bg-transparent border-none p-0 focus:ring-0"
-                      placeholder="Indica criterios generales, porcentajes o ponderaciones si es necesario..."
-                    />
-                  </div>
                 </div>
-
-                <div className="flex justify-center pt-8">
-                  <button
-                    onClick={() => updateBlock(activeBlock.id, { step: 'diversity' })}
-                    className="px-8 py-3 bg-primary text-white rounded-2xl font-bold uppercase tracking-widest hover:scale-105 transition-all shadow-lg shadow-primary/20 flex items-center gap-2"
-                  >
-                    Continuar a Diversidad <ChevronRight className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
               )}
             </div>
           ) : activeBlock.step === 'diversity' ? (
@@ -2399,14 +2697,22 @@ export default function App() {
                 )}
               </div>
               
-              <div className="flex justify-center pt-8">
+              <div className="flex flex-col md:flex-row items-center justify-center gap-4 pt-8">
                 <button
                   onClick={() => handleExport()}
                   disabled={isExporting}
+                  className="px-10 py-4 bg-primary/10 text-primary rounded-[2rem] font-bold text-lg hover:bg-primary/20 transition-all flex items-center gap-3"
+                >
+                  <Download className="w-5 h-5" />
+                  <span>Exportar a texto plano</span>
+                </button>
+                <button
+                  onClick={() => handleExportPDF()}
+                  disabled={isExporting}
                   className="px-12 py-4 bg-primary text-white rounded-[2rem] font-bold text-xl hover:scale-105 transition-all shadow-2xl shadow-primary/30 flex items-center gap-3"
                 >
-                  <Download className="w-6 h-6" />
-                  <span>Finalizar y Exportar SdA</span>
+                  <FileText className="w-6 h-6" />
+                  <span>Exportar a PDF</span>
                 </button>
               </div>
             </div>
@@ -2666,26 +2972,139 @@ export default function App() {
 
               <div className="p-6 pt-2 flex gap-3">
                 <button
-                  onClick={() => setExportContent(null)}
+                  onClick={() => {
+                    setExportContent(null);
+                    setExportingBlock(null);
+                  }}
                   className="flex-1 py-4 bg-gray-100 text-gray-600 font-bold rounded-2xl hover:bg-gray-200 transition-colors"
                 >
                   Cerrar
                 </button>
                 <button
                   onClick={() => {
-                    navigator.clipboard.writeText(exportContent);
+                    navigator.clipboard.writeText(exportContent || '');
                     alert("¡Contenido copiado al portapapeles!");
                   }}
                   className="flex-[2] py-4 bg-indigo-500 text-white font-bold rounded-2xl hover:bg-indigo-600 shadow-lg shadow-indigo-500/20 transition-all flex items-center justify-center gap-2"
                 >
                   <Copy className="w-5 h-5" />
-                  Copiar al portapapeles
+                  Copiar Texto Plano
                 </button>
               </div>
             </motion.div>
           </div>
         )}
       </AnimatePresence>
+      
+      {/* Edit Instrument Modal */}
+      {editingInstrument && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="absolute inset-0 bg-primary/20 backdrop-blur-sm"
+            onClick={() => setEditingInstrument(null)}
+          />
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.9, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            className="relative bg-white rounded-[2.5rem] w-full max-w-2xl shadow-2xl p-8 space-y-8 overflow-hidden"
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-primary/10 rounded-2xl flex items-center justify-center text-primary">
+                  <ClipboardList className="w-5 h-5" />
+                </div>
+                <h3 className="text-2xl font-bold text-primary">Detalles del Instrumento</h3>
+              </div>
+              <button onClick={() => setEditingInstrument(null)} className="p-2 hover:bg-gray-100 rounded-full text-gray-400">
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            <div className="space-y-6 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Nombre del Instrumento</label>
+                <input 
+                  type="text"
+                  placeholder="Ej: Rúbrica de exposición, Cuaderno de clase..."
+                  value={editingInstrument.name}
+                  onChange={(e) => setEditingInstrument({...editingInstrument, name: e.target.value})}
+                  className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 focus:ring-2 focus:ring-primary/10 focus:bg-white focus:border-primary/20 transition-all font-bold text-primary outline-none"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between truncate pr-1">
+                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Descripción y Forma de Evaluación</label>
+                  <button 
+                    onClick={handleImproveInstrument}
+                    disabled={isImprovingInstrument || !editingInstrument.name || !editingInstrument.description}
+                    className="flex items-center gap-1.5 text-[10px] font-bold text-accent uppercase tracking-widest hover:text-accent/80 disabled:opacity-30 disabled:cursor-not-allowed group transition-all"
+                  >
+                    {isImprovingInstrument ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3 group-hover:scale-110" />}
+                    Formatear y Mejorar con IA
+                  </button>
+                </div>
+                <AutoResizeTextArea 
+                  placeholder="Indica qué se evalúa, los criterios implicados y cómo vas a calificar..."
+                  value={editingInstrument.description}
+                  onChange={(e) => setEditingInstrument({...editingInstrument, description: e.target.value})}
+                  className="w-full h-40 bg-gray-50 border border-gray-100 rounded-2xl p-4 focus:ring-2 focus:ring-primary/10 focus:bg-white focus:border-primary/20 transition-all text-sm text-gray-600 leading-relaxed outline-none resize-none"
+                />
+              </div>
+
+              <div className="space-y-3">
+                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Actividades Vinculadas</label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {activeBlock?.activities?.map((act, i) => (
+                    <button
+                      key={act.id}
+                      onClick={() => {
+                        const current = [...editingInstrument.linkedActivitiesIds];
+                        const idx = current.indexOf(i.toString());
+                        if (idx >= 0) current.splice(idx, 1);
+                        else current.push(i.toString());
+                        setEditingInstrument({...editingInstrument, linkedActivitiesIds: current});
+                      }}
+                      className={`flex items-center gap-3 p-3 rounded-2xl border transition-all text-left group ${
+                        editingInstrument.linkedActivitiesIds.includes(i.toString())
+                          ? 'bg-primary/5 border-primary/20 text-primary'
+                          : 'bg-white border-gray-100 text-gray-400 hover:border-gray-200'
+                      }`}
+                    >
+                      <div className={`w-5 h-5 rounded-md border flex items-center justify-center transition-all ${
+                        editingInstrument.linkedActivitiesIds.includes(i.toString())
+                          ? 'bg-primary border-primary text-white'
+                          : 'bg-transparent border-gray-200'
+                      }`}>
+                        {editingInstrument.linkedActivitiesIds.includes(i.toString()) && <Check className="w-3.5 h-3.5" />}
+                      </div>
+                      <span className="text-[11px] font-bold flex-1 truncate">Act. {i + 1}: {act.title}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="pt-4 flex gap-3">
+              <button 
+                onClick={() => setEditingInstrument(null)}
+                className="flex-1 py-4 bg-gray-50 text-gray-400 font-bold rounded-2xl hover:bg-gray-100 transition-all"
+              >
+                Cancelar
+              </button>
+              <button 
+                onClick={handleSaveInstrument}
+                disabled={!editingInstrument.name || !editingInstrument.description}
+                className="flex-[2] py-4 bg-primary text-white font-bold rounded-2xl hover:bg-primary/90 disabled:opacity-50 transition-all shadow-xl shadow-primary/20"
+              >
+                Guardar Instrumento
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
 
       {/* Footer Info Mobile Only or floating */}
       <div className="md:hidden p-4 bg-white border-t border-gray-200">
