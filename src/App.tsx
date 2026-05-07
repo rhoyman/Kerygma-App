@@ -162,7 +162,7 @@ const getCategoryColor = (category?: string) => {
 };
 
 export default function App() {
-  const { user, login, logout, isFirebaseEnabled } = useAuth();
+  const { user, login, logout, loading, isFirebaseEnabled } = useAuth();
   const [blocks, setBlocks] = useState<CurriculumBlock[]>(() => {
     const saved = localStorage.getItem('kerygma_blocks');
     return saved ? JSON.parse(saved) : DEFAULT_CURRICULUM;
@@ -329,6 +329,9 @@ export default function App() {
   useEffect(() => {
     if (!db) return;
 
+    // Si aún está cargando la autenticación, no hacemos nada
+    if (loading) return;
+
     if (!user) {
       // RESET to local when logged out
       const saved = localStorage.getItem('kerygma_blocks');
@@ -390,9 +393,10 @@ export default function App() {
         return { ...data, id: doc.id };
       });
       
-      setBlocks(remoteBlocks);
-
+      // Solo actualizamos blocks si hay datos remotos o si ya terminamos de migrar
+      // (Si remoteBlocks está vacío, esperamos a que la migración termine si es un login fresco)
       if (remoteBlocks.length > 0) {
+        setBlocks(remoteBlocks);
         setActiveBlockId(current => {
           if (!current || !remoteBlocks.find(b => b.id === current)) {
             return remoteBlocks[0].id;
@@ -409,7 +413,7 @@ export default function App() {
     });
 
     return () => unsubscribe();
-  }, [user, db]);
+  }, [user, db, loading]);
 
   const syncBlock = async (block: CurriculumBlock) => {
     if (!user || !db) return;
@@ -1212,6 +1216,15 @@ export default function App() {
       default: return <BookOpen className="w-5 h-5" />;
     }
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center space-y-4">
+        <Loader2 className="w-12 h-12 text-primary animate-spin" />
+        <p className="text-sm font-bold uppercase tracking-widest text-primary/40">Iniciando sesión...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background text-[#1A1A1A] font-sans flex flex-col md:flex-row">
