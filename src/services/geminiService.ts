@@ -381,7 +381,8 @@ export async function analyzeExistingContent(
 
 export async function generateEvaluationInstruments(
   activities: { title: string, description: string }[],
-  content: string
+  content: string,
+  extraNotes?: string
 ): Promise<{ instruments: { name: string, description: string, linkedActivitiesIds: string[], canvaPrompt: string }[] }> {
   const ai = await getAI();
   if (!ai) return { instruments: [] };
@@ -391,8 +392,11 @@ export async function generateEvaluationInstruments(
   ${activities.map((a, i) => `Actividad ${i+1}: ${a.title}. ${a.description}`).join('\n')}
   
   Y estos contenidos: ${content}
+
+  ${extraNotes ? `Preferencias del docente para la evaluación: "${extraNotes}"` : ''}
   
   Propón 3-4 instrumentos de evaluación variados (ej: rúbrica de observación, diana de autoevaluación, portafolio digital, escala de estimación, cuestionario gamificado, etc.) que permitan evaluar el proceso y el producto final.
+  Asegúrate de priorizar o incluir los instrumentos o modalidades indicadas por el docente en sus preferencias si las hubiera.
   Para cada instrumento, detalla:
   1. Nombre del instrumento.
   2. Descripción de cómo se usa y qué evalúa exactamente.

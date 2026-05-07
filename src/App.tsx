@@ -8,6 +8,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   BookOpen, 
   ChevronRight, 
+  ChevronDown,
   Plus, 
   Sparkles, 
   Trash2, 
@@ -171,6 +172,7 @@ export default function App() {
   const [isFirestoreLoading, setIsFirestoreLoading] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isAIReady, setIsAIReady] = useState<boolean>(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth >= 768);
 
   const checkAI = async () => {
     const ready = await isAIConfigured();
@@ -1014,7 +1016,7 @@ export default function App() {
     const selectedSaberes = activeBlock.saberesBásicos.filter(s => s.selected);
     selectedSaberes.forEach(s => summary += `- Saber: ${s.description}\n`);
 
-    const suggestion = await suggestUnitContent(summary, activeBlock.materials);
+    const suggestion = await suggestUnitContent(summary, activeBlock.materials, activeBlock.planningNotes);
     
     updateBlock(activeBlock.id, { 
       step: 'planning',
@@ -1043,7 +1045,7 @@ export default function App() {
     });
     const selectedSaberes = activeBlock.saberesBásicos.filter(s => s.selected).map(s => s.description).join('\n- ');
 
-    const suggestion = await suggestUnitContent(summary + "\n" + selectedSaberes, activeBlock.materials, "Prueba algo diferente a lo anterior.");
+    const suggestion = await suggestUnitContent(summary + "\n" + selectedSaberes, activeBlock.materials, (activeBlock.planningNotes || "") + "\nPrueba algo diferente a lo anterior.");
     
     updateBlock(activeBlock.id, { 
       plan: { ...activeBlock.plan, suggestedContent: suggestion }
@@ -1119,7 +1121,8 @@ export default function App() {
     
     const result = await generateEvaluationInstruments(
       activeBlock.activities.map(a => ({ title: a.title, description: a.description })),
-      activeBlock.plan.suggestedContent
+      activeBlock.plan.suggestedContent,
+      activeBlock.evaluationNotes
     );
     
     updateBlock(activeBlock.id, { 
@@ -1224,9 +1227,49 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-background text-[#1A1A1A] font-sans flex flex-col md:flex-row">
-      {/* Sidebar */}
-      <aside className="w-full md:w-72 bg-white border-b md:border-b-0 md:border-r border-accent/20 flex flex-col">
+    <div className="min-h-screen bg-background text-[#1A1A1A] font-sans flex flex-col h-screen overflow-hidden">
+      {/* Mobile Header / Top Bar */}
+      <header className="flex items-center justify-between px-4 py-3 bg-white border-b border-gray-100 z-50 md:hidden">
+        <button 
+          onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+          className="p-2 -ml-2 text-primary hover:bg-primary/5 rounded-lg transition-colors"
+        >
+          {isSidebarOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+        </button>
+        <div className="flex items-center gap-2">
+          <BookOpen className="w-5 h-5 text-primary" />
+          <span className="font-title font-bold text-sm text-primary flex items-center gap-1.5">
+            KERYGMA <span className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded-full font-bold">2.0</span>
+          </span>
+        </div>
+        <div className="w-10" /> {/* Spacer */}
+      </header>
+
+      <div className="flex flex-1 overflow-hidden relative">
+        {/* Sidebar Overlay (Mobile) */}
+        <AnimatePresence>
+          {isSidebarOpen && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsSidebarOpen(false)}
+              className="fixed inset-0 bg-black/20 backdrop-blur-sm z-40 md:hidden"
+            />
+          )}
+        </AnimatePresence>
+        
+        {/* Sidebar */}
+        <motion.aside
+          initial={false}
+          animate={{ 
+            width: isSidebarOpen ? (window.innerWidth < 768 ? '85%' : '288px') : '0px',
+            x: (window.innerWidth < 768 && !isSidebarOpen) ? -320 : 0
+          }}
+          transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+          className={`fixed inset-y-0 left-0 z-50 md:relative md:z-10 bg-white border-r border-accent/20 flex flex-col overflow-hidden shadow-2xl md:shadow-none`}
+        >
+          <div className="flex-1 flex flex-col min-w-[288px] h-full">
         <div className="p-6 border-bottom border-gray-100">
           <div className="flex flex-col gap-4">
             <div className="flex flex-col">
@@ -1298,11 +1341,6 @@ export default function App() {
                     </button>
                   </div>
                 </div>
-
-                <div className="flex items-center justify-center gap-2 text-[9px] text-green-600 font-bold uppercase tracking-widest bg-green-50/50 py-1 rounded-lg border border-green-100/50">
-                  <Save className="w-2.5 h-2.5" />
-                  <span>Sincronizado en la nube</span>
-                </div>
               </div>
             )}
           </div>
@@ -1338,34 +1376,7 @@ export default function App() {
                   </div>
                 </div>
 
-                {activeBlockId === block.id && (
-                  <div className="flex border-t border-white/10 mt-1">
-                    <button 
-                      onClick={() => handleExport(block)}
-                      disabled={block.step !== 'sequencing'}
-                      className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-[9px] font-bold uppercase tracking-widest transition-colors rounded-bl-lg border-r border-white/10 ${
-                        block.step === 'sequencing'
-                          ? 'hover:bg-white/10 cursor-pointer'
-                          : 'opacity-40 cursor-not-allowed'
-                      }`}
-                      title={block.step !== 'sequencing' ? 'Completa la secuenciación para exportar' : 'Exportar contenido'}
-                    >
-                      <ClipboardList className="w-3 h-3" />
-                      <span>Exportar</span>
-                    </button>
-                    <div className="w-[1px] bg-white/10" />
-                    <button 
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        removeBlock(block.id);
-                      }}
-                      className="flex-1 flex items-center justify-center gap-1.5 py-2 text-[9px] font-bold uppercase tracking-widest text-red-100 hover:bg-red-500 rounded-br-lg transition-colors"
-                    >
-                      <Trash2 className="w-3 h-3" />
-                      <span>Eliminar</span>
-                    </button>
-                  </div>
-                )}
+                {/* Export and delete buttons removed as per user request */}
               </div>
             </div>
           ))}
@@ -1384,12 +1395,20 @@ export default function App() {
             <p className="text-[10px] text-gray-400 text-center">v1.1 • Religión Católica Andalucía</p>
           </div>
         </div>
-      </aside>
+      </div>
+      </motion.aside>
 
-      {/* Main Content */}
-      <main className="flex-1 flex flex-col overflow-hidden">
+      {/* Main Content Area */}
+      <main className="flex-1 flex flex-col overflow-hidden bg-gray-50/30">
         <header className="bg-white border-b border-gray-100 z-30 shrink-0">
           <div className="h-16 px-6 flex items-center justify-between gap-4">
+            <button 
+              onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+              className="hidden md:flex p-2 -ml-2 text-primary hover:bg-primary/5 rounded-lg transition-colors mr-2 shrink-0"
+              title={isSidebarOpen ? "Cerrar lateral" : "Abrir lateral"}
+            >
+              {isSidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+            </button>
             <div className="flex items-center gap-4 flex-1 min-w-0">
             {activeBlock && (activeBlock.creationMode || activeBlock.competenciasEspecíficas.length > 0) ? (
               <div className="flex items-center gap-3 w-full max-w-xl">
@@ -1428,31 +1447,30 @@ export default function App() {
                 className={`${isMobileMenuOpen ? 'block' : 'hidden md:block'} border-t border-gray-100 bg-white md:bg-gray-50/20 overflow-hidden`}
               >
                 <div className="px-6 py-2 flex flex-col md:flex-row items-center justify-between gap-4">
-                  <div className="flex items-center bg-gray-50 md:bg-white border border-gray-100 rounded-2xl md:rounded-full p-1 shadow-inner w-full md:w-auto overflow-x-auto no-scrollbar scroll-smooth">
-                    {[
-                      { id: 'selection', label: '1. Currículo' },
-                      { id: 'planning', label: '2. Propuesta' },
-                      { id: 'sequencing', label: '3. Aula' },
-                      { id: 'evaluation', label: '4. Evaluación' },
-                      { id: 'diversity', label: '5. Diversidad' }
-                    ].map((s, idx) => (
-                      <React.Fragment key={s.id}>
-                        <button
-                          onClick={() => {
-                            updateBlock(activeBlock.id, { step: s.id as any });
-                            setIsMobileMenuOpen(false);
-                          }}
-                          className={`flex-1 md:flex-initial px-4 md:px-6 py-2 md:py-1.5 rounded-xl md:rounded-full text-[10px] font-bold uppercase tracking-widest transition-all whitespace-nowrap ${
-                            activeBlock.step === s.id
-                               ? 'bg-primary text-white shadow-md shadow-primary/20 scale-[1.02]'
-                              : 'text-gray-400 hover:text-gray-600'
-                          }`}
-                        >
+                  <div className="relative w-full md:w-64">
+                    <select
+                      value={activeBlock.step}
+                      onChange={(e) => {
+                        updateBlock(activeBlock.id, { step: e.target.value as any });
+                        setIsMobileMenuOpen(false);
+                      }}
+                      className="w-full appearance-none bg-white md:bg-white border border-gray-100 rounded-xl px-4 py-2 pr-10 text-[10px] font-bold uppercase tracking-widest text-primary focus:outline-none focus:ring-2 focus:ring-primary/20 shadow-sm transition-all cursor-pointer"
+                    >
+                      {[
+                        { id: 'selection', label: '1. Currículo' },
+                        { id: 'planning', label: '2. Propuesta' },
+                        { id: 'sequencing', label: '3. Aula' },
+                        { id: 'evaluation', label: '4. Evaluación' },
+                        { id: 'diversity', label: '5. Diversidad' }
+                      ].map((s) => (
+                        <option key={s.id} value={s.id}>
                           {s.label}
-                        </button>
-                        {idx < 4 && <div className="hidden md:block w-px h-3 bg-gray-200 mx-1" />}
-                      </React.Fragment>
-                    ))}
+                        </option>
+                      ))}
+                    </select>
+                    <div className="absolute inset-y-0 right-0 flex items-center px-3 pointer-events-none text-gray-400">
+                      <ChevronDown className="w-3.5 h-3.5" />
+                    </div>
                   </div>
 
                   <div className="flex items-center justify-between md:justify-end w-full md:w-auto gap-4 md:gap-3">
@@ -1487,27 +1505,7 @@ export default function App() {
                       </div>
                     )}
 
-                    <div className="flex items-center gap-1">
-                      <button 
-                        onClick={() => handleExport()}
-                        disabled={activeBlock.step !== 'sequencing'}
-                        className={`p-2 rounded-full transition-all ${
-                          activeBlock.step === 'sequencing' 
-                            ? 'bg-primary text-white shadow-lg shadow-primary/20 hover:scale-110 active:scale-95' 
-                            : 'bg-gray-100 text-gray-300 cursor-not-allowed'
-                        }`}
-                        title="Exportar planificación"
-                      >
-                        <Download className="w-4 h-4" />
-                      </button>
-                      <button 
-                        onClick={() => removeBlock(activeBlock.id)}
-                        className="p-2 text-gray-400 hover:text-red-500 transition-colors"
-                        title="Eliminar planificación"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
+                    {/* Header action buttons removed as per user request */}
                   </div>
                 </div>
               </motion.div>
@@ -1606,6 +1604,18 @@ export default function App() {
                       Usaremos los elementos curriculares seleccionados y tus materiales para diseñar un itinerario de contenidos personalizado.
                     </p>
                   </div>
+
+                  <div className="max-w-md mx-auto space-y-2 text-left">
+                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Notas o instrucciones adicionales</label>
+                    <textarea
+                      value={activeBlock.planningNotes || ''}
+                      onChange={(e) => updateBlock(activeBlock.id, { planningNotes: e.target.value })}
+                      placeholder="Ej: Evita contenidos sobre X, céntrate más en Y, quiero que se mencione Z..."
+                      className="w-full h-24 bg-gray-50 border border-gray-100 rounded-2xl p-4 focus:ring-2 focus:ring-primary/10 focus:bg-white focus:border-primary/20 transition-all text-sm outline-none resize-none"
+                    />
+                    <p className="text-[10px] text-gray-400 italic px-1">Indica si quieres abordar o evitar temas concretos para que la IA lo tenga en cuenta.</p>
+                  </div>
+
                   <button
                     onClick={handleGeneratePlanning}
                     disabled={isAnalyzing || getSelectedCounts(activeBlock).critCount === 0}
@@ -1670,7 +1680,17 @@ export default function App() {
                       </div>
                       <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-xl shadow-gray-200/50 space-y-6">
                         <div className="space-y-2">
-                          <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Tus recursos y preferencias</label>
+                          <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Contenido: ¿Qué tratar o evitar?</label>
+                          <textarea
+                            value={activeBlock.planningNotes || ''}
+                            onChange={(e) => updateBlock(activeBlock.id, { planningNotes: e.target.value })}
+                            placeholder="Ej: Evita contenidos sobre X, céntrate más en Y..."
+                            className="w-full h-24 bg-gray-50 border border-transparent rounded-2xl p-4 focus:ring-2 focus:ring-primary/10 focus:bg-white focus:border-primary/20 transition-all text-sm outline-none resize-none"
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Metodología: recursos y preferencias</label>
                           <textarea
                             value={activeBlock.plan.methodology || ''}
                             onChange={(e) => updateBlock(activeBlock.id, { 
@@ -2041,6 +2061,18 @@ export default function App() {
                     <h3 className="text-2xl font-bold text-primary">¿Cómo vamos a evaluar?</h3>
                     <p className="text-gray-500 max-w-md mx-auto">La IA analizará tus actividades y te propondrá los mejores instrumentos para cada una.</p>
                   </div>
+
+                  <div className="max-w-md mx-auto space-y-2 text-left">
+                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Preferencias de evaluación</label>
+                    <textarea
+                      value={activeBlock.evaluationNotes || ''}
+                      onChange={(e) => updateBlock(activeBlock.id, { evaluationNotes: e.target.value })}
+                      placeholder="Ej: Prefiero al menos una prueba escrita, trabajo en grupo, modalidad digital..."
+                      className="w-full h-24 bg-gray-50 border border-gray-100 rounded-2xl p-4 focus:ring-2 focus:ring-primary/10 focus:bg-white focus:border-primary/20 transition-all text-sm outline-none resize-none"
+                    />
+                    <p className="text-[10px] text-gray-400 italic px-1">Indica si tienes preferencia por algún instrumento o modalidad concreta.</p>
+                  </div>
+
                   <button
                     onClick={handleGenerateEvaluationAction}
                     disabled={isAnalyzing}
@@ -2141,11 +2173,33 @@ export default function App() {
                       <Plus className="w-8 h-8" />
                       <span className="font-bold text-xs uppercase tracking-widest">Añadir Instrumento</span>
                     </button>
+                    <button
+                      onClick={handleGenerateEvaluationAction}
+                      disabled={isAnalyzing}
+                      className="inline-flex items-center gap-2 px-4 py-2 text-xs font-bold uppercase tracking-wider text-accent border border-accent/20 rounded-xl hover:bg-accent/5 transition-all"
+                    >
+                      {isAnalyzing ? <Loader2 className="w-3 h-3 animate-spin" /> : <RotateCw className="w-3 h-3" />}
+                      Regenerar con IA
+                    </button>
                   </div>
                   
-                  <div className="bg-white rounded-3xl border border-gray-100 p-8 shadow-xl shadow-gray-200/30 space-y-4">
-                    <div className="flex items-center gap-2 text-primary">
-                      <Target className="w-5 h-5" />
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="bg-white rounded-3xl border border-gray-100 p-8 shadow-xl shadow-gray-200/30 space-y-4">
+                      <div className="flex items-center gap-2 text-primary">
+                        <PenTool className="w-5 h-5" />
+                        <h3 className="font-bold uppercase text-[11px] tracking-widest">Tus preferencias</h3>
+                      </div>
+                      <textarea
+                        value={activeBlock.evaluationNotes || ''}
+                        onChange={(e) => updateBlock(activeBlock.id, { evaluationNotes: e.target.value })}
+                        className="w-full text-sm text-gray-600 leading-relaxed bg-transparent border-none p-0 focus:ring-0 outline-none resize-none h-24"
+                        placeholder="Pruebas escritas, trabajos digitales..."
+                      />
+                    </div>
+
+                    <div className="bg-white rounded-3xl border border-gray-100 p-8 shadow-xl shadow-gray-200/30 space-y-4">
+                      <div className="flex items-center gap-2 text-primary">
+                        <Target className="w-5 h-5" />
                       <h3 className="font-bold uppercase text-[11px] tracking-widest">Observaciones Generales de Evaluación</h3>
                     </div>
                     <AutoResizeTextArea
@@ -2155,16 +2209,17 @@ export default function App() {
                       placeholder="Indica criterios generales, porcentajes o ponderaciones si es necesario..."
                     />
                   </div>
-
-                  <div className="flex justify-center pt-8">
-                    <button
-                      onClick={() => updateBlock(activeBlock.id, { step: 'diversity' })}
-                      className="px-8 py-3 bg-primary text-white rounded-2xl font-bold uppercase tracking-widest hover:scale-105 transition-all shadow-lg shadow-primary/20 flex items-center gap-2"
-                    >
-                      Continuar a Diversidad <ChevronRight className="w-4 h-4" />
-                    </button>
-                  </div>
                 </div>
+
+                <div className="flex justify-center pt-8">
+                  <button
+                    onClick={() => updateBlock(activeBlock.id, { step: 'diversity' })}
+                    className="px-8 py-3 bg-primary text-white rounded-2xl font-bold uppercase tracking-widest hover:scale-105 transition-all shadow-lg shadow-primary/20 flex items-center gap-2"
+                  >
+                    Continuar a Diversidad <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
               )}
             </div>
           ) : activeBlock.step === 'diversity' ? (
@@ -2433,6 +2488,7 @@ export default function App() {
           ) : null}
         </div>
       </main>
+    </div>
 
       {/* Delete Confirmation Modal */}
       <AnimatePresence>

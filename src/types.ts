@@ -66,6 +66,8 @@ export interface CurriculumBlock {
   materials?: string; 
   competenciasEspecíficas: Competencia[];
   saberesBásicos: SaberBásico[];
+  planningNotes?: string;
+  evaluationNotes?: string;
   plan?: UnitPlan;
   activities?: Activity[];
   evaluation?: EvaluationSection;
