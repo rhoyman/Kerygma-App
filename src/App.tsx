@@ -171,8 +171,9 @@ function WelcomeScreen({ onLogin, loading, isFirebaseEnabled }: { onLogin: () =>
             <span className="text-6xl md:text-8xl font-bold tracking-tighter serif text-primary italic">Kerygma</span>
             <span className="text-6xl md:text-8xl font-black tracking-tighter text-accent ml-1">APP</span>
           </div>
-          <p className="text-lg md:text-xl font-medium text-gray-500 max-w-lg">
-            Planificador de Situaciones de Aprendizaje de Religión Católica para Andalucía
+          <p className="text-base md:text-lg font-medium text-gray-500 max-w-lg">
+            Planificador de Situaciones de Aprendizaje<br />
+            de Religión Católica para Andalucía
           </p>
         </div>
 
@@ -1294,8 +1295,9 @@ export default function App() {
             <span className="text-3xl font-bold tracking-tighter serif text-primary italic">Kerygma</span>
             <span className="text-3xl font-black tracking-tighter text-accent ml-0.5">APP</span>
           </div>
-          <p className="text-[9px] text-gray-400 font-bold leading-tight mt-2 max-w-[200px]">
-            Planificador de Situaciones de Aprendizaje de Religión Católica para Andalucía
+          <p className="text-[8px] text-gray-400 font-bold leading-tight mt-2 max-w-xs">
+            Planificador de Situaciones de Aprendizaje<br />
+            de Religión Católica para Andalucía
           </p>
         </div>
         <div className="w-10" /> {/* Spacer */}
@@ -1333,8 +1335,9 @@ export default function App() {
                 <span className="text-4xl font-bold tracking-tighter serif text-primary italic">Kerygma</span>
                 <span className="text-4xl font-black tracking-tighter text-accent ml-0.5">APP</span>
               </div>
-              <p className="text-[10px] text-gray-400 font-bold leading-tight mt-2 max-w-[200px]">
-                Planificador de Situaciones de Aprendizaje de Religión Católica para Andalucía
+              <p className="text-[9px] text-gray-400 font-bold leading-tight mt-2 max-w-xs">
+                Planificador de Situaciones de Aprendizaje<br />
+                de Religión Católica para Andalucía
               </p>
             </div>
             
