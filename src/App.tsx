@@ -737,28 +737,30 @@ export default function App() {
       
       setBlocks(currentBlocks => {
         const mergedMap = new Map<string, CurriculumBlock>();
+        const userSuffix = user.uid.slice(0, 5);
         
         // 1. Cloud data is the absolute source of truth
         remoteBlocks.forEach(rb => mergedMap.set(rb.id, rb));
         
-        // 2. Process local blocks for migration/adoption
+        // 2. Merge local blocks
         currentBlocks.forEach(lb => {
-          if (!mergedMap.has(lb.id)) {
-            // Adopt guest blocks if they are meaningful or if they already match current user
-            if (!lb.userId || lb.userId === user.uid) {
-              const updatedLocal = { ...lb, userId: user.uid };
-              mergedMap.set(lb.id, updatedLocal);
-              
-              // Only sync if it has something meaningful beyond defaults
-              if (updatedLocal.initialized || (updatedLocal.title && updatedLocal.title.length > 3)) {
-                // Use a very short delay for initial migration sync
-                setTimeout(() => syncBlock(updatedLocal), 100);
-              }
+          const isDefault = lb.id.startsWith('primaria-') || lb.id.startsWith('infantil-') || lb.id.startsWith('secundaria-') || lb.id.startsWith('bach-');
+          const suffixedId = (isDefault && !lb.id.includes(userSuffix)) ? `${lb.id}-${userSuffix}` : null;
+          
+          const localId = lb.id;
+          const cloudMatch = mergedMap.get(localId) || (suffixedId ? mergedMap.get(suffixedId) : null);
+
+          if (cloudMatch) {
+            // Cloud version exists. If we have a pending local sync, preserve local version
+            // which uses the cloud ID as its destination.
+            if (syncTimeoutRef.current[localId]) {
+              mergedMap.set(cloudMatch.id, { ...lb, id: cloudMatch.id });
             }
           } else {
-            // If it exists in both, cloud wins unless we have a pending sync for this specific block
-            if (syncTimeoutRef.current[lb.id]) {
-              mergedMap.set(lb.id, lb);
+            // No cloud version found. Keep if it belongs to user or is being adopted.
+            if (!lb.userId || lb.userId === user.uid) {
+              const finalId = suffixedId || lb.id;
+              mergedMap.set(finalId, { ...lb, id: finalId, userId: user.uid });
             }
           }
         });
@@ -813,9 +815,10 @@ export default function App() {
       setSyncingCount(prev => prev + 1);
       
       const sanitize = (obj: any): any => {
+        if (obj === null || obj === undefined) return null;
         if (Array.isArray(obj)) return obj.map(sanitize);
-        if (obj !== null && typeof obj === 'object') {
-          if (Object.getPrototypeOf(obj) !== Object.prototype) return obj;
+        if (typeof obj === 'object') {
+          if (obj.constructor !== Object && obj.constructor !== Array) return obj;
           const result: any = {};
           Object.entries(obj).forEach(([key, value]) => {
             if (value !== undefined) result[key] = sanitize(value);
@@ -826,27 +829,27 @@ export default function App() {
       };
 
       try {
+        const userSuffix = user.uid.slice(0, 5);
+        const isDefault = block.id.startsWith('primaria-') || block.id.startsWith('infantil-') || block.id.startsWith('secundaria-') || block.id.startsWith('bach-');
+        const finalId = (isDefault && !block.id.includes(userSuffix)) ? `${block.id}-${userSuffix}` : block.id;
+
         const sanitizedBlock = sanitize({ 
           ...block, 
+          id: finalId,
           userId: user.uid,
           updatedAt: serverTimestamp() 
         });
-        
-        // Final id check: if it's a default ID, make it user-specific before cloud sync
-        let finalId = sanitizedBlock.id;
-        const isDefault = finalId.startsWith('primaria-') || finalId.startsWith('infantil-') || finalId.startsWith('secundaria-') || finalId.startsWith('bach-');
-        if (isDefault && !finalId.includes(user.uid.slice(0, 5))) {
-          finalId = `${finalId}-${user.uid.slice(0, 5)}`;
-        }
 
-        await setDoc(doc(db, 'situations', finalId), { ...sanitizedBlock, id: finalId }, { merge: true });
+        await setDoc(doc(db, 'situations', finalId), sanitizedBlock, { merge: true });
       } catch (error) {
-        handleFirestoreError(error, OperationType.WRITE, `situations/${block.id}`);
+        console.error("Sync error for block:", block.id, error);
+        // We don't want to show a popup for every keypress error if network is just temporarily down
+        // but we should at least log it.
       } finally {
         setSyncingCount(prev => Math.max(0, prev - 1));
         delete syncTimeoutRef.current[blockIdForSync];
       }
-    }, 300); // significantly reduced debounce for speed
+    }, 1000); // Increased debounce to reduce write pressure
   };
 
   // Local storage persistence Cache
