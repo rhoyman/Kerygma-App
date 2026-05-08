@@ -105,7 +105,8 @@ import {
   getDocs,
   doc, 
   deleteDoc,
-  serverTimestamp 
+  serverTimestamp,
+  getDocFromServer
 } from 'firebase/firestore';
 
 enum OperationType {
@@ -695,6 +696,13 @@ export default function App() {
     }
     
     setIsFirestoreLoading(true);
+
+    // Validate connection
+    getDocFromServer(doc(db, 'situations', 'conn-test')).catch(err => {
+      if (err.message?.includes('offline')) {
+        console.error("Firestore appears to be offline or config is invalid.");
+      }
+    });
     
     // First, fetch current cloud data
     const q = query(

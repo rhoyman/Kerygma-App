@@ -1,10 +1,12 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Pillar 0: Default Deny
     match /{document=**} {
       allow read, write: if false;
     }
 
+    // Pillar 3: Helpers & Hardening
     function isSignedIn() {
       return request.auth != null;
     }
@@ -13,20 +15,61 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == userId;
     }
 
+    // Path Variable Hardening (ID Poisoning Guard)
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Pillar 2: Validation Blueprint (The "Anti-Update-Gap")
+    // Enforces schema and identity for all write operations
     function isValidSituation(data) {
-      return data.keys().hasAll(['id', 'title', 'userId']) &&
+      // Identity Integrity (Critical)
+      return data.userId == request.auth.uid &&
+             // Type Safety for core ID
              data.id is string &&
-             data.title is string &&
-             data.userId == request.auth.uid;
+             data.id.size() <= 128 &&
+             // Boundary limits for strings
+             (!data.keys().hasAll(['title']) || (data.title is string && data.title.size() <= 2000)) &&
+             (!data.keys().hasAll(['stage']) || (data.stage is string && data.stage.size() <= 100)) &&
+             (!data.keys().hasAll(['level']) || (data.level is string && data.level.size() <= 100));
     }
 
     match /situations/{situationId} {
-      allow read: if isOwner(resource.data.userId);
-      allow create: if isSignedIn() && isValidSituation(request.resource.data);
-      allow update: if isOwner(resource.data.userId) && 
-                     isValidSituation(request.resource.data) &&
-                     request.resource.data.userId == resource.data.userId;
-      allow delete: if isOwner(resource.data.userId);
+      // Pillar 8: Secure List Queries (Evaluation of resource.data)
+      // Never delegate query security to the client
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      // Single row get
+      allow get: if isSignedIn() && resource.data.userId == request.auth.uid;
+      
+      // Create new situation
+      allow create: if isSignedIn() && 
+                    isValidId(situationId) &&
+                    isValidSituation(incoming()) &&
+                    incoming().id == situationId &&
+                    // Enforce existence of core fields during creation
+                    incoming().keys().hasAll(['userId', 'id', 'updatedAt']) &&
+                    // Temporal Integrity
+                    incoming().updatedAt == request.time;
+                    
+      // Update existing situation
+      allow update: if isSignedIn() && 
+                    existing().userId == request.auth.uid &&
+                    isValidSituation(incoming()) &&
+                    incoming().id == situationId &&
+                    incoming().userId == request.auth.uid && // Immortality/Identity integrity
+                    // Temporal Integrity
+                    incoming().updatedAt == request.time;
+                    
+      // Delete situation
+      allow delete: if isSignedIn() && existing().userId == request.auth.uid;
     }
   }
 }
