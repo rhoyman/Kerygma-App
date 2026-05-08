@@ -217,6 +217,8 @@ export default function App() {
     return saved ? JSON.parse(saved) : DEFAULT_CURRICULUM;
   });
   
+  const [studentGroups, setStudentGroups] = useState<StudentGroup[]>([]);
+  
   const [isFirestoreLoading, setIsFirestoreLoading] = useState(true);
   const [syncingCount, setSyncingCount] = useState(0);
   const isSyncing = syncingCount > 0;
@@ -1370,7 +1372,9 @@ export default function App() {
     // Remote delete if logged in
     if (user && db) {
       try {
+        console.log("Attempting to delete situation with ID:", id);
         await deleteDoc(doc(db, 'situations', id));
+        console.log("Situation deleted successfully from Firestore");
       } catch (error) {
         console.error("Delete failed:", error);
         handleFirestoreError(error, OperationType.DELETE, `situations/${id}`);

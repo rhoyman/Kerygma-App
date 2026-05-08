@@ -54,6 +54,16 @@ export interface DiversitySection {
   generalObservations?: string;
 }
 
+export interface StudentGroup {
+  id: string;
+  userId: string;
+  course: string;
+  letter: string;
+  school: string;
+  studentDescription: string;
+  needsDescription: string;
+}
+
 export interface CurriculumBlock {
   id: string;
   userId?: string;
@@ -73,6 +83,7 @@ export interface CurriculumBlock {
   evaluation?: EvaluationSection;
   diversity?: DiversitySection;
   updatedAt?: any;
+  selectedGroupIds?: string[];
 }
 
 export interface Competencia {
