@@ -709,7 +709,8 @@ export default function App() {
         const localSaved = localStorage.getItem('kerygma_blocks');
         if (localSaved) {
           const localBlocks: CurriculumBlock[] = JSON.parse(localSaved);
-          const meaningfulBlocks = localBlocks.filter(b => b.initialized || (b.title && b.title !== 'Nueva Situación'));
+          // Less restrictive: any block that has been touched or has any content
+          const meaningfulBlocks = localBlocks.filter(b => b.initialized || b.title || b.stage);
           
           for (const block of meaningfulBlocks) {
             const isDefault = block.id.startsWith('primaria-') || block.id.startsWith('infantil-') || block.id.startsWith('secundaria-') || block.id.startsWith('bach-');
@@ -717,7 +718,10 @@ export default function App() {
               ? `${block.id}-${user.uid.slice(0, 5)}` 
               : block.id;
             
-            await syncBlock({ ...block, id: safeId, userId: user.uid });
+            // Only claim if it doesn't already belong to someone else
+            if (!block.userId || block.userId === user.uid) {
+              await syncBlock({ ...block, id: safeId, userId: user.uid });
+            }
           }
         }
       } catch (e) {
@@ -732,8 +736,6 @@ export default function App() {
       } as CurriculumBlock));
       
       setBlocks(currentBlocks => {
-        // If we just logged in and got remote blocks, we prefer them
-        // unless we have very fresh local changes
         const mergedMap = new Map<string, CurriculumBlock>();
         
         // 1. Cloud data is the absolute source of truth
@@ -749,8 +751,14 @@ export default function App() {
               
               // Only sync if it has something meaningful beyond defaults
               if (updatedLocal.initialized || (updatedLocal.title && updatedLocal.title.length > 3)) {
-                setTimeout(() => syncBlock(updatedLocal), 500);
+                // Use a very short delay for initial migration sync
+                setTimeout(() => syncBlock(updatedLocal), 100);
               }
+            }
+          } else {
+            // If it exists in both, cloud wins unless we have a pending sync for this specific block
+            if (syncTimeoutRef.current[lb.id]) {
+              mergedMap.set(lb.id, lb);
             }
           }
         });
@@ -838,7 +846,7 @@ export default function App() {
         setSyncingCount(prev => Math.max(0, prev - 1));
         delete syncTimeoutRef.current[blockIdForSync];
       }
-    }, 800); // reduced debounce
+    }, 300); // significantly reduced debounce for speed
   };
 
   // Local storage persistence Cache
