@@ -44,7 +44,8 @@ import {
   User as UserIcon,
   FileJson,
   ClipboardList,
-  Github
+  Github,
+  Cloud
 } from 'lucide-react';
 import { CurriculumBlock, Competencia, SaberBásico, Criterio, Activity, UnitPlan, EvaluationInstrument } from './types';
 import { jsPDF } from 'jspdf';
@@ -738,12 +739,18 @@ export default function App() {
         // 1. Cloud data is the absolute source of truth
         remoteBlocks.forEach(rb => mergedMap.set(rb.id, rb));
         
-        // 2. Only keep local blocks if they are not in the cloud AND assigned to this user
-        // (This handles blocks just created that haven't synced yet)
+        // 2. Process local blocks for migration/adoption
         currentBlocks.forEach(lb => {
           if (!mergedMap.has(lb.id)) {
-            if (lb.userId === user.uid) {
-              mergedMap.set(lb.id, lb);
+            // Adopt guest blocks if they are meaningful or if they already match current user
+            if (!lb.userId || lb.userId === user.uid) {
+              const updatedLocal = { ...lb, userId: user.uid };
+              mergedMap.set(lb.id, updatedLocal);
+              
+              // Only sync if it has something meaningful beyond defaults
+              if (updatedLocal.initialized || (updatedLocal.title && updatedLocal.title.length > 3)) {
+                setTimeout(() => syncBlock(updatedLocal), 500);
+              }
             }
           }
         });
@@ -784,12 +791,17 @@ export default function App() {
   const syncBlock = async (block: CurriculumBlock) => {
     if (!user || !db) return;
     
+    // Ensure the block being synced belongs to the user
+    if (block.userId && block.userId !== user.uid) return;
+
     // Debounce sync
     if (syncTimeoutRef.current[block.id]) {
       clearTimeout(syncTimeoutRef.current[block.id]);
     }
 
-    syncTimeoutRef.current[block.id] = setTimeout(async () => {
+    const blockIdForSync = block.id;
+
+    syncTimeoutRef.current[blockIdForSync] = setTimeout(async () => {
       setSyncingCount(prev => prev + 1);
       
       const sanitize = (obj: any): any => {
@@ -806,22 +818,27 @@ export default function App() {
       };
 
       try {
-        if (isSyncing) { // Just for a bit of logging or tracking if needed
-          // console.log("Syncing block:", block.id);
-        }
         const sanitizedBlock = sanitize({ 
           ...block, 
           userId: user.uid,
           updatedAt: serverTimestamp() 
         });
-        await setDoc(doc(db, 'situations', sanitizedBlock.id), sanitizedBlock, { merge: true });
+        
+        // Final id check: if it's a default ID, make it user-specific before cloud sync
+        let finalId = sanitizedBlock.id;
+        const isDefault = finalId.startsWith('primaria-') || finalId.startsWith('infantil-') || finalId.startsWith('secundaria-') || finalId.startsWith('bach-');
+        if (isDefault && !finalId.includes(user.uid.slice(0, 5))) {
+          finalId = `${finalId}-${user.uid.slice(0, 5)}`;
+        }
+
+        await setDoc(doc(db, 'situations', finalId), { ...sanitizedBlock, id: finalId }, { merge: true });
       } catch (error) {
         handleFirestoreError(error, OperationType.WRITE, `situations/${block.id}`);
       } finally {
         setSyncingCount(prev => Math.max(0, prev - 1));
-        delete syncTimeoutRef.current[block.id];
+        delete syncTimeoutRef.current[blockIdForSync];
       }
-    }, 1000); // 1 second debounce
+    }, 800); // reduced debounce
   };
 
   // Local storage persistence Cache
@@ -1801,9 +1818,18 @@ export default function App() {
                     {getStageIcon(block.stage)}
                   </div>
                   <div className="flex-1 text-left overflow-hidden">
-                    <p className="text-sm font-semibold truncate">
-                      {block.title || 'Nueva Situación'}
-                    </p>
+                    <div className="flex items-center gap-1.5 overflow-hidden">
+                      <p className="text-sm font-semibold truncate flex-1">
+                        {block.title || 'Nueva Situación'}
+                      </p>
+                      {syncTimeoutRef.current[block.id] ? (
+                        <Loader2 className="w-2.5 h-2.5 animate-spin opacity-50 shrink-0" />
+                      ) : (
+                        user && block.userId === user.uid && (
+                          <Cloud className={`w-2.5 h-2.5 shrink-0 ${activeBlockId === block.id ? 'text-white' : 'text-green-500'} opacity-60`} />
+                        )
+                      )}
+                    </div>
                     <p className={`text-[10px] uppercase tracking-tighter truncate ${activeBlockId === block.id ? 'text-white/70' : 'text-gray-400'}`}>
                       {formatLevelDisplay(block.level, block.stage)} • {block.stage}
                     </p>
