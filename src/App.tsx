@@ -47,7 +47,7 @@ import {
   Github,
   Cloud
 } from 'lucide-react';
-import { CurriculumBlock, Competencia, SaberBásico, Criterio, Activity, UnitPlan, EvaluationInstrument } from './types';
+import { CurriculumBlock, Competencia, SaberBásico, Criterio, Activity, UnitPlan, EvaluationInstrument, StudentGroup } from './types';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { DEFAULT_CURRICULUM } from './data/curriculumDefaults';
@@ -218,6 +218,7 @@ export default function App() {
   });
   
   const [studentGroups, setStudentGroups] = useState<StudentGroup[]>([]);
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
   
   const [isFirestoreLoading, setIsFirestoreLoading] = useState(true);
   const [syncingCount, setSyncingCount] = useState(0);
@@ -1359,6 +1360,9 @@ export default function App() {
     if (!deleteConfirmation) return;
     const id = deleteConfirmation;
     
+    // Backup for rollback
+    const blockToRestore = blocks.find(b => b.id === id);
+
     // Optimistic local delete
     setBlocks(prev => {
       const next = prev.filter(b => b.id !== id);
@@ -1377,8 +1381,11 @@ export default function App() {
         console.log("Situation deleted successfully from Firestore");
       } catch (error) {
         console.error("Delete failed:", error);
+        // Rollback
+        if (blockToRestore) {
+           setBlocks(prev => [...prev, blockToRestore]);
+        }
         handleFirestoreError(error, OperationType.DELETE, `situations/${id}`);
-        // Optional: Re-add to state if delete fails?
       }
     }
   };
@@ -1824,69 +1831,94 @@ export default function App() {
           <div className="px-2 mb-4">
             <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Situaciones de Aprendizaje</h3>
           </div>
-          {blocks.map(block => (
-            <div key={block.id} className="group relative">
-              <div 
-                className={`w-full flex flex-col p-1 rounded-xl transition-all ${
-                  activeBlockId === block.id 
-                    ? 'bg-primary text-white shadow-lg shadow-primary/20' 
-                    : 'hover:bg-accent/5 text-gray-600'
-                }`}
-              >
-                <div 
-                  onClick={() => setActiveBlockId(block.id)}
-                  className="flex items-center gap-3 p-2 cursor-pointer rounded-lg"
-                >
-                  <div className={activeBlockId === block.id ? 'text-white' : 'text-gray-400'}>
-                    {getStageIcon(block.stage)}
-                  </div>
-                  <div className="flex-1 text-left overflow-hidden">
-                    <div className="flex items-center gap-1.5 overflow-hidden">
-                      <p className="text-sm font-semibold truncate flex-1">
-                        {block.title || 'Nueva Situación'}
-                      </p>
-                      {syncTimeoutRef.current[block.id] ? (
-                        <Loader2 className="w-2.5 h-2.5 animate-spin opacity-50 shrink-0" />
-                      ) : (
-                        user && block.userId === user.uid && (
-                          <Cloud className={`w-2.5 h-2.5 shrink-0 ${activeBlockId === block.id ? 'text-white' : 'text-green-500'} opacity-60`} />
-                        )
-                      )}
-                    </div>
-                    <p className={`text-[10px] uppercase tracking-tighter truncate ${activeBlockId === block.id ? 'text-white/70' : 'text-gray-400'}`}>
-                      {formatLevelDisplay(block.level, block.stage)} • {block.stage}
-                    </p>
-                  </div>
-                </div>
+          {Object.entries(blocks.reduce((acc, block) => {
+            if (!acc[block.stage]) acc[block.stage] = {};
+            if (!acc[block.stage][block.level]) acc[block.stage][block.level] = [];
+            acc[block.stage][block.level].push(block);
+            return acc;
+          }, {} as Record<string, Record<string, CurriculumBlock[]>>)).map(([stage, levels]) => (
+            <div key={stage} className="space-y-1">
+              <h3 className="text-[10px] font-bold text-gray-500 uppercase tracking-widest px-2 pt-2">{stage}</h3>
+              {Object.entries(levels).map(([level, stageBlocks]) => {
+                const groupKey = `${stage}-${level}`;
+                const isExpanded = expandedGroups[groupKey] ?? true;
+                return (
+                  <div key={level}>
+                     <button 
+                        onClick={() => setExpandedGroups(prev => ({ ...prev, [groupKey]: !isExpanded }))}
+                        className="flex w-full items-center justify-between text-[9px] font-semibold text-gray-400 uppercase px-4 pb-1 hover:bg-white/5"
+                     >
+                       {formatLevelDisplay(level, stage as any)}
+                       {isExpanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+                     </button>
+                     {isExpanded && stageBlocks.map(block => (
+                      <div key={block.id} className="group relative">
+                        <div 
+                          className={`w-full flex flex-col p-1 rounded-xl transition-all ${
+                            activeBlockId === block.id 
+                              ? 'bg-primary text-white shadow-lg shadow-primary/20' 
+                              : 'hover:bg-accent/5 text-gray-600'
+                          }`}
+                        >
+                          <div 
+                            onClick={() => setActiveBlockId(block.id)}
+                            className="flex items-center gap-3 p-2 cursor-pointer rounded-lg"
+                          >
+                            <div className={activeBlockId === block.id ? 'text-white' : 'text-gray-400'}>
+                              {getStageIcon(block.stage)}
+                            </div>
+                            <div className="flex-1 text-left overflow-hidden">
+                              <div className="flex items-center gap-1.5 overflow-hidden">
+                                <p className="text-sm font-semibold truncate flex-1">
+                                  {block.title || 'Nueva Situación'}
+                                </p>
+                                {syncTimeoutRef.current[block.id] ? (
+                                  <Loader2 className="w-2.5 h-2.5 animate-spin opacity-50 shrink-0" />
+                                ) : (
+                                  user && block.userId === user.uid && (
+                                    <Cloud className={`w-2.5 h-2.5 shrink-0 ${activeBlockId === block.id ? 'text-white' : 'text-green-500'} opacity-60`} />
+                                  )
+                                )}
+                              </div>
+                              <p className={`text-[10px] uppercase tracking-tighter truncate ${activeBlockId === block.id ? 'text-white/70' : 'text-gray-400'}`}>
+                                {formatLevelDisplay(block.level, block.stage)} • {block.stage}
+                              </p>
+                            </div>
+                          </div>
 
-                {activeBlockId === block.id && (
-                  <div className="flex border-t border-white/10 mt-1">
-                    <button 
-                      onClick={() => handleExport(block)}
-                      disabled={!['sequencing', 'evaluation', 'diversity'].includes(block.step)}
-                      className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-[9px] font-bold uppercase tracking-widest transition-colors border-r border-white/10 ${
-                        ['sequencing', 'evaluation', 'diversity'].includes(block.step)
-                          ? 'hover:bg-white/10 cursor-pointer text-white'
-                          : 'opacity-40 cursor-not-allowed text-white/50'
-                      }`}
-                      title={!['sequencing', 'evaluation', 'diversity'].includes(block.step) ? 'Completa la secuenciación para exportar' : 'Exportar SdA'}
-                    >
-                      <Download className="w-3 h-3" />
-                      <span>Exportar</span>
-                    </button>
-                    <button 
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        removeBlock(block.id);
-                      }}
-                      className="flex-1 flex items-center justify-center gap-1.5 py-2 text-[9px] font-bold uppercase tracking-widest text-red-100 hover:bg-red-500 transition-colors shadow-none"
-                    >
-                      <Trash2 className="w-3 h-3" />
-                      <span>Eliminar</span>
-                    </button>
+                          {activeBlockId === block.id && (
+                            <div className="flex border-t border-white/10 mt-1">
+                              <button 
+                                onClick={() => handleExport(block)}
+                                disabled={!['sequencing', 'evaluation', 'diversity'].includes(block.step)}
+                                className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-[9px] font-bold uppercase tracking-widest transition-colors border-r border-white/10 ${
+                                  ['sequencing', 'evaluation', 'diversity'].includes(block.step)
+                                    ? 'hover:bg-white/10 cursor-pointer text-white'
+                                    : 'opacity-40 cursor-not-allowed text-white/50'
+                                }`}
+                                title={!['sequencing', 'evaluation', 'diversity'].includes(block.step) ? 'Completa la secuenciación para exportar' : 'Exportar SdA'}
+                              >
+                                <Download className="w-3 h-3" />
+                                <span>Exportar</span>
+                              </button>
+                              <button 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  removeBlock(block.id);
+                                }}
+                                className="flex-1 flex items-center justify-center gap-1.5 py-2 text-[9px] font-bold uppercase tracking-widest text-red-100 hover:bg-red-500 transition-colors shadow-none"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                                <span>Eliminar</span>
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                )}
-              </div>
+                );
+              })}
             </div>
           ))}
           
