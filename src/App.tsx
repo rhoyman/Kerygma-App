@@ -1859,13 +1859,13 @@ export default function App() {
                   <div className="flex border-t border-white/10 mt-1">
                     <button 
                       onClick={() => handleExport(block)}
-                      disabled={block.step !== 'sequencing'}
+                      disabled={!['sequencing', 'evaluation', 'diversity'].includes(block.step)}
                       className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-[9px] font-bold uppercase tracking-widest transition-colors border-r border-white/10 ${
-                        block.step === 'sequencing'
+                        ['sequencing', 'evaluation', 'diversity'].includes(block.step)
                           ? 'hover:bg-white/10 cursor-pointer text-white'
                           : 'opacity-40 cursor-not-allowed text-white/50'
                       }`}
-                      title={block.step !== 'sequencing' ? 'Completa la secuenciación para exportar' : 'Exportar SdA'}
+                      title={!['sequencing', 'evaluation', 'diversity'].includes(block.step) ? 'Completa la secuenciación para exportar' : 'Exportar SdA'}
                     >
                       <Download className="w-3 h-3" />
                       <span>Exportar</span>
