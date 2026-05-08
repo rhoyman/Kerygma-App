@@ -45,7 +45,10 @@ import {
   FileJson,
   ClipboardList,
   Github,
-  Cloud
+  Cloud,
+  Star,
+  CheckCircle2,
+  Info
 } from 'lucide-react';
 import { CurriculumBlock, Competencia, SaberBásico, Criterio, Activity, UnitPlan, EvaluationInstrument, StudentGroup } from './types';
 import { jsPDF } from 'jspdf';
@@ -103,6 +106,7 @@ import {
   onSnapshot, 
   setDoc, 
   getDocs,
+  addDoc,
   doc, 
   deleteDoc,
   serverTimestamp,
@@ -210,6 +214,189 @@ function WelcomeScreen({ onLogin, loading, isFirebaseEnabled }: { onLogin: () =>
   );
 }
 
+
+const AddGroupModal = ({ isOpen, onClose, onSave, existingSchools, editingGroup }: { isOpen: boolean, onClose: () => void, onSave: (group: Omit<StudentGroup, 'id' | 'userId'>) => void, existingSchools: string[], editingGroup?: StudentGroup | null }) => {
+  const [stage, setStage] = useState<'Infantil' | 'Primaria' | 'Secundaria' | 'Bachillerato'>('Primaria');
+  const [course, setCourse] = useState('');
+  const [letter, setLetter] = useState('');
+  const [school, setSchool] = useState('');
+  const [newSchoolName, setNewSchoolName] = useState('');
+  const [isAddingNewSchool, setIsAddingNewSchool] = useState(false);
+  const [studentDescription, setStudentDescription] = useState('');
+  const [needsDescription, setNeedsDescription] = useState('');
+
+  // Initial population for editing
+  useEffect(() => {
+    if (editingGroup) {
+      setStage(editingGroup.stage || 'Primaria');
+      setCourse(editingGroup.course);
+      setLetter(editingGroup.letter);
+      setSchool(editingGroup.school);
+      setStudentDescription(editingGroup.studentDescription);
+      setNeedsDescription(editingGroup.needsDescription);
+      setIsAddingNewSchool(false);
+    } else {
+      // Reset if not editing
+      setStage('Primaria');
+      setCourse('');
+      setLetter('');
+      setSchool('');
+      setNewSchoolName('');
+      setIsAddingNewSchool(false);
+      setStudentDescription('');
+      setNeedsDescription('');
+    }
+  }, [editingGroup, isOpen]);
+
+  // Update selected course when stage changes if the current course doesn't match the new stage
+  useEffect(() => {
+    const levels = STAGE_LEVELS[stage] || [];
+    if (!levels.includes(course)) {
+      setCourse(levels[0] || '');
+    }
+  }, [stage]);
+
+  if (!isOpen) return null;
+
+  const handleSave = () => {
+    const finalSchool = isAddingNewSchool ? newSchoolName : school;
+    if (!finalSchool || !course) return;
+    onSave({ 
+      course, 
+      letter, 
+      school: finalSchool, 
+      stage,
+      studentDescription, 
+      needsDescription 
+    });
+    // Reset fields
+    setCourse('');
+    setLetter('');
+    setSchool('');
+    setNewSchoolName('');
+    setIsAddingNewSchool(false);
+    setStudentDescription('');
+    setNeedsDescription('');
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="bg-white rounded-[2.5rem] p-10 w-full max-w-lg space-y-8 shadow-2xl border border-gray-100 max-h-[90vh] flex flex-col overflow-hidden"
+      >
+        <div className="space-y-2 shrink-0">
+          <h2 className="text-2xl font-bold text-primary flex items-center gap-3">
+            <Users className="w-6 h-6 text-accent" />
+            {editingGroup ? 'Editar grupo' : 'Nuevo grupo de alumnos'}
+          </h2>
+          <p className="text-gray-400 text-sm">Configura los detalles del grupo para personalizar sus SdA.</p>
+        </div>
+
+        <div className="space-y-6 overflow-y-auto pr-2 custom-scrollbar flex-1">
+          {/* CENTRO */}
+          <div className="space-y-2">
+            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Centro Educativo</label>
+            {!isAddingNewSchool ? (
+              <div className="flex gap-2">
+                <select 
+                  className="flex-1 p-4 bg-gray-50 border-none rounded-2xl text-sm focus:ring-2 focus:ring-primary/10 outline-none" 
+                  value={school} 
+                  onChange={e => {
+                    if (e.target.value === 'ADD_NEW') {
+                      setIsAddingNewSchool(true);
+                    } else {
+                      setSchool(e.target.value);
+                    }
+                  }}
+                >
+                  <option value="">Selecciona un centro...</option>
+                  {existingSchools.map(s => <option key={s} value={s}>{s}</option>)}
+                  <option value="ADD_NEW" className="text-primary font-bold">+ Registrar nuevo centro...</option>
+                </select>
+              </div>
+            ) : (
+              <div className="flex gap-2">
+                <input 
+                  autoFocus
+                  className="flex-1 p-4 bg-gray-50 border-none rounded-2xl text-sm focus:ring-2 focus:ring-primary/10 outline-none" 
+                  placeholder="Nombre del nuevo centro" 
+                  value={newSchoolName} 
+                  onChange={e => setNewSchoolName(e.target.value)} 
+                />
+                <button 
+                  onClick={() => setIsAddingNewSchool(false)}
+                  className="px-4 py-2 text-xs font-bold text-gray-400 hover:text-primary uppercase tracking-widest"
+                >
+                  Cancelar
+                </button>
+              </div>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            {/* ETAPA */}
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Etapa</label>
+              <select 
+                className="w-full p-4 bg-gray-50 border-none rounded-2xl text-sm focus:ring-2 focus:ring-primary/10 outline-none" 
+                value={stage} 
+                onChange={e => setStage(e.target.value as any)}
+              >
+                {Object.keys(STAGE_LEVELS).map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+
+            {/* CURSO */}
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Curso</label>
+              <select 
+                className="w-full p-4 bg-gray-50 border-none rounded-2xl text-sm focus:ring-2 focus:ring-primary/10 outline-none" 
+                value={course} 
+                onChange={e => setCourse(e.target.value)}
+              >
+                {(STAGE_LEVELS[stage] || []).map(l => <option key={l} value={l}>{l}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            {/* LETRA */}
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Letra / Sección</label>
+              <input className="w-full p-4 bg-gray-50 border-none rounded-2xl text-sm focus:ring-2 focus:ring-primary/10 outline-none" placeholder="Ej: A, B, C..." value={letter} onChange={e => setLetter(e.target.value)} />
+            </div>
+          </div>
+
+          {/* DESCRIPCIONES */}
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Perfil del Alumnado</label>
+              <textarea className="w-full p-4 bg-gray-50 border-none rounded-2xl text-sm focus:ring-2 focus:ring-primary/10 outline-none h-24 resize-none" placeholder="Describe brevemente el grupo..." value={studentDescription} onChange={e => setStudentDescription(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Necesidades Específicas</label>
+              <textarea className="w-full p-4 bg-gray-50 border-none rounded-2xl text-sm focus:ring-2 focus:ring-primary/10 outline-none h-24 resize-none" placeholder="Indica si hay alumnos con necesidades de apoyo..." value={needsDescription} onChange={e => setNeedsDescription(e.target.value)} />
+            </div>
+          </div>
+        </div>
+
+        <div className="flex gap-4 pt-4 shrink-0">
+          <button onClick={onClose} className="flex-1 py-4 text-sm font-bold text-gray-400 hover:bg-gray-50 rounded-2xl transition-all">Cancelar</button>
+          <button 
+            onClick={handleSave} 
+            disabled={(!school && !newSchoolName) || !course}
+            className="flex-[2] py-4 text-sm font-bold bg-primary text-white rounded-2xl hover:bg-primary/90 disabled:opacity-50 transition-all shadow-xl shadow-primary/20"
+          >
+            {editingGroup ? 'Guardar Cambios' : 'Crear Grupo'}
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
+};
+
 export default function App() {
   const { user, login, logout, loading, isFirebaseEnabled } = useAuth();
   const [blocks, setBlocks] = useState<CurriculumBlock[]>(() => {
@@ -219,6 +406,8 @@ export default function App() {
   
   const [studentGroups, setStudentGroups] = useState<StudentGroup[]>([]);
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
+  const [showAddGroupModal, setShowAddGroupModal] = useState(false);
+  const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
   
   const [isFirestoreLoading, setIsFirestoreLoading] = useState(true);
   const [syncingCount, setSyncingCount] = useState(0);
@@ -235,7 +424,10 @@ export default function App() {
   useEffect(() => {
     checkAI();
   }, []);
-  const [activeBlockId, setActiveBlockId] = useState<string>(blocks[0]?.id || '');
+  const [viewSelection, setViewSelection] = useState<{ stage: string; level: string } | null>(null);
+  const [activeBlockId, setActiveBlockId] = useState<string>('');
+  const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const syncTimeoutRef = useRef<Record<string, NodeJS.Timeout>>({});
   const [isGenerating, setIsGenerating] = useState<string | null>(null);
   const [isEvaluating, setIsEvaluating] = useState<string | null>(null);
@@ -248,6 +440,28 @@ export default function App() {
   const [editingInstrument, setEditingInstrument] = useState<EvaluationInstrument | null>(null);
   const [isImprovingInstrument, setIsImprovingInstrument] = useState(false);
   const tokenRef = useRef<string | null>(null);
+
+  const handleSaveGroup = async (newGroup: Omit<StudentGroup, 'id' | 'userId'>) => {
+    if (!user || !db) return;
+    try {
+      if (editingGroupId) {
+        await setDoc(doc(db, 'studentGroups', editingGroupId), {
+          ...newGroup,
+          userId: user.uid
+        }, { merge: true });
+        setEditingGroupId(null);
+      } else {
+        await addDoc(collection(db, 'studentGroups'), {
+          ...newGroup,
+          userId: user.uid
+        });
+      }
+      setShowAddGroupModal(false);
+    } catch (error) {
+      console.error("Error saving group:", error);
+      handleFirestoreError(error, editingGroupId ? OperationType.UPDATE : OperationType.CREATE, 'studentGroups');
+    }
+  };
 
   const handleExport = (blockToExport?: CurriculumBlock) => {
     const targetBlock = blockToExport || activeBlock;
@@ -644,16 +858,39 @@ export default function App() {
       }
     }
 
-    if (block.diversity && block.diversity.measures.length > 0) {
-      content += `## Atención a la Diversidad\n\n`;
+    if (block.docenteEval) {
+      content += `## Evaluación de la Práctica Docente\n\n`;
+      if (block.docenteEval.materiaResults) content += `### Resultados de la evaluación de la materia\n${block.docenteEval.materiaResults}\n\n`;
+      if (block.docenteEval.metodosPedagogicos) content += `### Métodos didácticos y Pedagógicos\n${block.docenteEval.metodosPedagogicos}\n\n`;
+      if (block.docenteEval.materialesRecursos) content += `### Adecuación de los materiales y recursos didácticos\n${block.docenteEval.materialesRecursos}\n\n`;
+      if (block.docenteEval.eficaciaDiversidad) content += `### Eficacia de las medidas de atención a la diversidad y a las diferencias individuales\n${block.docenteEval.eficaciaDiversidad}\n\n`;
+      if (block.docenteEval.instrumentosVariedad) content += `### Utilización de instrumentos de evaluación variados, diversos, accesibles y adaptados\n${block.docenteEval.instrumentosVariedad}\n\n`;
+    }
+
+    if (block.diversity && block.diversity.measures && block.diversity.measures.length > 0) {
+      content += `## Adaptaciones al Grupo y Medidas de Atención a la Diversidad\n\n`;
       block.diversity.measures.forEach(m => {
         content += `### [${m.type}] ${m.need}\n`;
         content += `**Medida:** ${m.measure}\n`;
         content += `**Ajustes Metodológicos:** ${m.methodologyAdjustments}\n\n`;
       });
       if (block.diversity.generalObservations) {
-        content += `**Observaciones Generales de Diversidad:**\n${block.diversity.generalObservations}\n\n`;
+        content += `**Situación de partida / Contexto:**\n${block.diversity.generalObservations}\n\n`;
       }
+    }
+
+    if (block.groupDiversity) {
+      Object.entries(block.groupDiversity).forEach(([groupId, diversity]) => {
+        const group = studentGroups.find(g => g.id === groupId);
+        if (group && diversity.measures && diversity.measures.length > 0) {
+          content += `## Adaptaciones para el Grupo: ${group.course} ${group.letter} (${group.school})\n\n`;
+          diversity.measures.forEach(m => {
+            content += `### [${m.type}] ${m.need}\n`;
+            content += `**Medida:** ${m.measure}\n`;
+            content += `**Ajustes Metodológicos:** ${m.methodologyAdjustments}\n\n`;
+          });
+        }
+      });
     }
 
     return content;
@@ -809,6 +1046,29 @@ export default function App() {
     };
   }, [user, db, loading]);
 
+  // Sync studentGroups with Firestore when logged in
+  useEffect(() => {
+    if (!db || !user) return;
+    
+    const q = query(
+      collection(db, 'studentGroups'), 
+      where('userId', '==', user.uid)
+    );
+    
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const groups = snapshot.docs.map(doc => ({ 
+        ...doc.data(), 
+        id: doc.id 
+      } as StudentGroup));
+      setStudentGroups(groups);
+    }, (error) => {
+      console.error("Firestore groups onSnapshot error:", error);
+      handleFirestoreError(error, OperationType.LIST, 'studentGroups');
+    });
+    
+    return () => unsubscribe();
+  }, [user, db]);
+
   const syncBlock = async (block: CurriculumBlock) => {
     if (!user || !db) return;
     
@@ -867,8 +1127,6 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('kerygma_blocks', JSON.stringify(blocks));
   }, [blocks]);
-
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   const activeBlock = blocks.find(b => b.id === activeBlockId);
 
@@ -1329,14 +1587,14 @@ export default function App() {
     return { ceCount, critCount, saberCount };
   };
 
-  const addNewBlock = () => {
+  const addNewBlock = (stageOverride?: string, levelOverride?: string) => {
     const id = `block-${Date.now()}`;
     const newBlock: CurriculumBlock = {
       id,
       userId: user?.uid,
       title: '',
-      stage: 'Secundaria', 
-      level: '1º ESO',
+      stage: stageOverride || viewSelection?.stage || 'Secundaria', 
+      level: levelOverride || viewSelection?.level || '1º ESO',
       initialized: false,
       step: 'selection',
       competenciasEspecíficas: [],
@@ -1345,6 +1603,8 @@ export default function App() {
     
     setBlocks(prev => [...prev, newBlock]);
     setActiveBlockId(id);
+    setViewSelection(null); // Clear gallery view when creating/entering a block
+    setActiveGroupId(null);
     
     // Sync to Firestore immediately if logged in
     if (user && db) {
@@ -1603,7 +1863,7 @@ export default function App() {
     setEditingInstrument(null);
   };
 
-  const handleGenerateDiversityAction = async (needs: string) => {
+  const handleGenerateDiversityAction = async (needs: string, groupId?: string) => {
     if (!activeBlock || !activeBlock.activities || !activeBlock.plan) return;
     setIsAnalyzing(true);
     
@@ -1613,13 +1873,25 @@ export default function App() {
       needs
     );
     
-    updateBlock(activeBlock.id, { 
-      step: 'diversity',
-      diversity: {
-        measures: result.measures.map((m, i) => ({ ...m, id: `div-${i}` }) as any),
-        generalObservations: `Necesidades atendidas: ${needs}`
-      }
-    });
+    if (groupId) {
+      const currentMap = activeBlock.groupDiversity || {};
+      updateBlock(activeBlock.id, {
+        groupDiversity: {
+          ...currentMap,
+          [groupId]: {
+            measures: result.measures.map((m, i) => ({ ...m, id: `div-${groupId}-${i}` }) as any),
+            generalObservations: `Adaptaciones específicas para el grupo: ${needs}`
+          }
+        }
+      });
+    } else {
+      updateBlock(activeBlock.id, { 
+        diversity: {
+          measures: result.measures.map((m, i) => ({ ...m, id: `div-${i}` }) as any),
+          generalObservations: `Necesidades atendidas: ${needs}`
+        }
+      });
+    }
     setIsAnalyzing(false);
   };
 
@@ -1749,7 +2021,14 @@ export default function App() {
         <div className="p-6 border-bottom border-gray-100">
           <div className="flex flex-col gap-4">
             <div className="flex flex-col">
-              <div className="flex items-baseline leading-none">
+              <div 
+                className="flex items-baseline leading-none cursor-pointer"
+                onClick={() => {
+                  setActiveBlockId('');
+                  setViewSelection(null);
+                  setActiveGroupId(null);
+                }}
+              >
                 <span className="text-4xl font-bold tracking-tighter serif text-primary italic">Kerygma</span>
                 <span className="text-4xl font-black tracking-tighter text-accent ml-0.5">APP</span>
               </div>
@@ -1827,108 +2106,158 @@ export default function App() {
           </div>
         </div>
 
-        <nav className="flex-1 overflow-y-auto p-4 space-y-2">
-          <div className="px-2 mb-4">
-            <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Situaciones de Aprendizaje</h3>
-          </div>
-          {Object.entries(blocks.reduce((acc, block) => {
-            if (!acc[block.stage]) acc[block.stage] = {};
-            if (!acc[block.stage][block.level]) acc[block.stage][block.level] = [];
-            acc[block.stage][block.level].push(block);
-            return acc;
-          }, {} as Record<string, Record<string, CurriculumBlock[]>>)).map(([stage, levels]) => (
-            <div key={stage} className="space-y-1">
-              <h3 className="text-[10px] font-bold text-gray-500 uppercase tracking-widest px-2 pt-2">{stage}</h3>
-              {Object.entries(levels).map(([level, stageBlocks]) => {
-                const groupKey = `${stage}-${level}`;
-                const isExpanded = expandedGroups[groupKey] ?? true;
+        <nav className="flex-1 overflow-y-auto p-4 space-y-6">
+          {/* GRUPOS */}
+          <div className="space-y-1">
+            <div className="px-2 mb-2 flex items-center justify-between">
+              <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Mis centros y grupos</h3>
+              <button 
+                onClick={() => setShowAddGroupModal(true)}
+                className="text-primary hover:text-primary/70 transition-colors"
+                title="Añadir grupo"
+              >
+                <Plus className="w-4 h-4" />
+              </button>
+            </div>
+            
+            {(() => {
+              const schoolsList: string[] = Array.from(new Set(studentGroups.map(g => g.school)) as Set<string>).sort();
+              return schoolsList.map((schoolName: string) => {
+                const isSchoolExpanded = expandedGroups[schoolName] ?? true;
+                const groupsInSchool = studentGroups.filter(g => g.school === schoolName);
+                
                 return (
-                  <div key={level}>
-                     <button 
-                        onClick={() => setExpandedGroups(prev => ({ ...prev, [groupKey]: !isExpanded }))}
-                        className="flex w-full items-center justify-between text-[9px] font-semibold text-gray-400 uppercase px-4 pb-1 hover:bg-white/5"
-                     >
-                       {formatLevelDisplay(level, stage as any)}
-                       {isExpanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
-                     </button>
-                     {isExpanded && stageBlocks.map(block => (
-                      <div key={block.id} className="group relative">
-                        <div 
-                          className={`w-full flex flex-col p-1 rounded-xl transition-all ${
-                            activeBlockId === block.id 
-                              ? 'bg-primary text-white shadow-lg shadow-primary/20' 
-                              : 'hover:bg-accent/5 text-gray-600'
-                          }`}
-                        >
-                          <div 
-                            onClick={() => setActiveBlockId(block.id)}
-                            className="flex items-center gap-3 p-2 cursor-pointer rounded-lg"
-                          >
-                            <div className={activeBlockId === block.id ? 'text-white' : 'text-gray-400'}>
-                              {getStageIcon(block.stage)}
-                            </div>
-                            <div className="flex-1 text-left overflow-hidden">
-                              <div className="flex items-center gap-1.5 overflow-hidden">
-                                <p className="text-sm font-semibold truncate flex-1">
-                                  {block.title || 'Nueva Situación'}
-                                </p>
-                                {syncTimeoutRef.current[block.id] ? (
-                                  <Loader2 className="w-2.5 h-2.5 animate-spin opacity-50 shrink-0" />
-                                ) : (
-                                  user && block.userId === user.uid && (
-                                    <Cloud className={`w-2.5 h-2.5 shrink-0 ${activeBlockId === block.id ? 'text-white' : 'text-green-500'} opacity-60`} />
-                                  )
-                                )}
-                              </div>
-                              <p className={`text-[10px] uppercase tracking-tighter truncate ${activeBlockId === block.id ? 'text-white/70' : 'text-gray-400'}`}>
-                                {formatLevelDisplay(block.level, block.stage)} • {block.stage}
-                              </p>
-                            </div>
-                          </div>
-
-                          {activeBlockId === block.id && (
-                            <div className="flex border-t border-white/10 mt-1">
-                              <button 
-                                onClick={() => handleExport(block)}
-                                disabled={!['sequencing', 'evaluation', 'diversity'].includes(block.step)}
-                                className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-[9px] font-bold uppercase tracking-widest transition-colors border-r border-white/10 ${
-                                  ['sequencing', 'evaluation', 'diversity'].includes(block.step)
-                                    ? 'hover:bg-white/10 cursor-pointer text-white'
-                                    : 'opacity-40 cursor-not-allowed text-white/50'
-                                }`}
-                                title={!['sequencing', 'evaluation', 'diversity'].includes(block.step) ? 'Completa la secuenciación para exportar' : 'Exportar SdA'}
-                              >
-                                <Download className="w-3 h-3" />
-                                <span>Exportar</span>
-                              </button>
-                              <button 
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  removeBlock(block.id);
-                                }}
-                                className="flex-1 flex items-center justify-center gap-1.5 py-2 text-[9px] font-bold uppercase tracking-widest text-red-100 hover:bg-red-500 transition-colors shadow-none"
-                              >
-                                <Trash2 className="w-3 h-3" />
-                                <span>Eliminar</span>
-                              </button>
-                            </div>
-                          )}
-                        </div>
+                  <div key={schoolName} className="space-y-1">
+                    <button
+                      onClick={() => {
+                        const next = { ...expandedGroups };
+                        next[schoolName] = !isSchoolExpanded;
+                        setExpandedGroups(next);
+                      }}
+                      className={`w-full flex items-center justify-between p-2 rounded-xl transition-all ${
+                        activeGroupId && groupsInSchool.some(g => g.id === activeGroupId)
+                          ? 'bg-accent/5 text-accent' 
+                          : 'text-gray-600 hover:bg-accent/5'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3 font-bold text-[10px] uppercase tracking-wider truncate">
+                        <School className={`w-4 h-4 ${isSchoolExpanded ? 'text-accent' : 'text-gray-400'}`} />
+                        <span className="truncate">{schoolName}</span>
                       </div>
-                    ))}
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-bold bg-accent/10 text-accent px-1.5 py-0.5 rounded-md">{groupsInSchool.length}</span>
+                        {isSchoolExpanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+                      </div>
+                    </button>
+
+                    {isSchoolExpanded && (
+                      <div className="ml-4 space-y-1 border-l-2 border-gray-50 pl-2">
+                        {groupsInSchool.sort((a,b) => a.course.localeCompare(b.course)).map(group => (
+                          <div 
+                            key={group.id}
+                            className={`group flex items-center justify-between p-1 pr-2 rounded-lg cursor-pointer transition-all ${
+                              activeGroupId === group.id 
+                                ? 'bg-primary text-white font-bold shadow-md shadow-primary/20' 
+                                : 'text-gray-500 hover:bg-primary/5 hover:text-primary'
+                            }`}
+                          >
+                            <div 
+                              className="flex-1 flex items-center gap-3 p-1 rounded-lg text-xs"
+                              onClick={() => {
+                                setActiveGroupId(group.id);
+                                setActiveBlockId('');
+                                setViewSelection(null);
+                                setIsMobileMenuOpen(false);
+                              }}
+                            >
+                              <span className="truncate">{group.course} {group.letter}</span>
+                            </div>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setEditingGroupId(group.id);
+                                setShowAddGroupModal(true);
+                              }}
+                              className={`p-1 rounded-md transition-colors ${
+                                activeGroupId === group.id 
+                                  ? 'text-white/70 hover:text-white' 
+                                  : 'text-gray-300 hover:text-primary opacity-0 group-hover:opacity-100'
+                              }`}
+                            >
+                              <Edit2 className="w-3 h-3" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 );
-              })}
+              });
+            })()}
+          </div>
+
+          {/* SITUACIONES */}
+          <div className="space-y-1">
+            <div className="px-2 mb-4 flex items-center justify-between">
+              <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Situaciones de Aprendizaje</h3>
             </div>
-          ))}
-          
-          <button 
-            onClick={addNewBlock}
-            className="w-full flex items-center justify-center gap-2 p-3 mt-4 border-2 border-dashed border-accent/20 rounded-xl text-accent/60 hover:border-accent hover:text-accent transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            <span className="text-sm font-medium">Nueva Situación</span>
-          </button>
+            
+            {Object.entries(STAGE_LEVELS).map(([stage, levels]) => {
+              const isStageExpanded = expandedGroups[stage] ?? false;
+              const hasActiveInStage = activeBlock && activeBlock.stage === stage;
+              const isStageViewing = viewSelection?.stage === stage;
+
+              return (
+                <div key={stage} className="space-y-1">
+                  <button
+                    onClick={() => setExpandedGroups(prev => ({ ...prev, [stage]: !isStageExpanded }))}
+                    className={`w-full flex items-center justify-between p-2 rounded-xl transition-all ${
+                      isStageViewing || hasActiveInStage
+                        ? 'bg-primary/5 text-primary' 
+                        : 'text-gray-600 hover:bg-accent/5'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3 font-bold text-xs uppercase tracking-wider">
+                      <div className={isStageViewing || hasActiveInStage ? 'text-primary' : 'text-gray-400'}>
+                        {getStageIcon(stage)}
+                      </div>
+                      <span>{stage}</span>
+                    </div>
+                    {isStageExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                  </button>
+                  
+                  {isStageExpanded && (
+                    <div className="ml-4 space-y-1 mt-1 border-l-2 border-accent/10 pl-2">
+                      {levels.map(level => {
+                        const isLevelViewing = viewSelection?.stage === stage && viewSelection?.level === level;
+                        const isLevelActive = activeBlock && activeBlock.stage === stage && activeBlock.level === level;
+                        const isSelected = isLevelViewing || (isLevelActive && !viewSelection);
+
+                        return (
+                          <button
+                            key={level}
+                            onClick={() => {
+                              setViewSelection({ stage, level });
+                              setActiveBlockId('');
+                              setActiveGroupId(null);
+                              if (window.innerWidth < 768) setIsSidebarOpen(false);
+                            }}
+                            className={`w-full flex items-center p-2 rounded-lg text-left text-xs font-medium transition-all ${
+                              isSelected 
+                                ? 'bg-primary text-white shadow-md shadow-primary/20' 
+                                : 'text-gray-500 hover:bg-accent/5'
+                            }`}
+                          >
+                            {formatLevelDisplay(level, stage as any)}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </nav>
 
         <div className="p-4 border-t border-gray-100 bg-gray-50/50">
@@ -1941,129 +2270,121 @@ export default function App() {
 
       {/* Main Content Area */}
       <main className="flex-1 flex flex-col overflow-hidden bg-gray-50/30">
-        <header className="bg-white border-b border-gray-100 z-30 shrink-0">
-          <div className="h-16 px-6 flex items-center justify-between gap-4">
-            <button 
-              onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-              className="hidden md:flex p-2 -ml-2 text-primary hover:bg-primary/5 rounded-lg transition-colors mr-2 shrink-0"
-              title={isSidebarOpen ? "Cerrar lateral" : "Abrir lateral"}
-            >
-              {isSidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-            </button>
-            <div className="flex items-center gap-4 flex-1 min-w-0">
-            {activeBlock && (activeBlock.creationMode || activeBlock.competenciasEspecíficas.length > 0) ? (
-              <div className="flex items-center gap-3 w-full max-w-xl">
-                <div className="flex items-center gap-2 px-3 py-1 bg-gray-100 rounded-full shrink-0">
-                  <span className="text-xs font-bold text-primary">{formatLevelDisplay(activeBlock.level, activeBlock.stage)}</span>
-                  <div className="w-1 h-1 bg-gray-300 rounded-full" />
-                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{activeBlock.stage}</span>
-                </div>
-                
-                <input
-                  type="text"
-                  value={activeBlock.title || ''}
-                  onChange={(e) => updateBlock(activeBlock.id, { title: e.target.value })}
-                  placeholder="Título de la Situación..."
-                  className="flex-1 bg-transparent border-none p-0 focus:ring-0 font-bold text-lg text-primary placeholder:text-gray-300"
-                />
-              </div>
-            ) : null}
-            </div>
-
-            <div className="flex items-center gap-2 px-6">
-              {activeBlock && activeBlock.initialized && activeBlock.creationMode && (
+        {activeBlock ? (
+          <>
+            <header className="bg-white border-b border-gray-100 z-30 shrink-0">
+              <div className="h-16 px-6 flex items-center justify-between gap-4">
                 <button 
-                  onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-                  className="md:hidden p-2 hover:bg-gray-50 rounded-xl text-gray-500 transition-colors"
+                  onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+                  className="hidden md:flex p-2 -ml-2 text-primary hover:bg-primary/5 rounded-lg transition-colors mr-2 shrink-0"
+                  title={isSidebarOpen ? "Cerrar lateral" : "Abrir lateral"}
                 >
-                  {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+                  {isSidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
                 </button>
-              )}
-            </div>
-          </div>
-          
-          <AnimatePresence>
-            {activeBlock && activeBlock.initialized && activeBlock.creationMode && (
-              <motion.div 
-                className={`${isMobileMenuOpen ? 'block' : 'hidden md:block'} border-t border-gray-100 bg-white md:bg-gray-50/20 overflow-hidden`}
-              >
-                <div className="px-6 py-2 flex flex-col md:flex-row items-center justify-between gap-4">
-                  <div className="relative w-full md:w-64">
-                    <select
-                      value={activeBlock.step}
-                      onChange={(e) => {
-                        updateBlock(activeBlock.id, { step: e.target.value as any });
-                        setIsMobileMenuOpen(false);
-                      }}
-                      className="w-full appearance-none bg-white md:bg-white border border-gray-100 rounded-xl px-4 py-2 pr-10 text-[10px] font-bold uppercase tracking-widest text-primary focus:outline-none focus:ring-2 focus:ring-primary/20 shadow-sm transition-all cursor-pointer"
-                    >
-                      {[
-                        { id: 'selection', label: '1. Currículo' },
-                        { id: 'planning', label: '2. Propuesta' },
-                        { id: 'sequencing', label: '3. Aula' },
-                        { id: 'evaluation', label: '4. Evaluación' },
-                        { id: 'diversity', label: '5. Diversidad' }
-                      ].map((s) => (
-                        <option key={s.id} value={s.id}>
-                          {s.label}
-                        </option>
-                      ))}
-                    </select>
-                    <div className="absolute inset-y-0 right-0 flex items-center px-3 pointer-events-none text-gray-400">
-                      <ChevronDown className="w-3.5 h-3.5" />
+                <div className="flex items-center gap-4 flex-1 min-w-0">
+                  <div className="flex items-center gap-3 w-full max-w-xl">
+                    <div className="flex items-center gap-2 px-3 py-1 bg-gray-100 rounded-full shrink-0">
+                      <span className="text-xs font-bold text-primary">{formatLevelDisplay(activeBlock.level, activeBlock.stage)}</span>
+                      <div className="w-1 h-1 bg-gray-300 rounded-full" />
+                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{activeBlock.stage}</span>
                     </div>
-                  </div>
-
-                  <div className="flex items-center justify-between md:justify-end w-full md:w-auto gap-4 md:gap-3">
-                    {activeBlock.step === 'selection' && (
-                      <div className="flex items-center gap-3 bg-white px-4 py-1.5 rounded-full border border-gray-100 shadow-sm">
-                        <div className="flex gap-3 pr-3 border-r border-gray-100">
-                          <div className="flex flex-col items-center">
-                            <span className="text-[9px] font-bold text-gray-400 uppercase tracking-tighter leading-none">Comp.</span>
-                            <span className="text-xs font-bold text-primary leading-none mt-1">{getSelectedCounts(activeBlock).ceCount}</span>
-                          </div>
-                          <div className="flex flex-col items-center">
-                            <span className="text-[9px] font-bold text-gray-400 uppercase tracking-tighter leading-none">Crit.</span>
-                            <span className="text-xs font-bold text-accent leading-none mt-1">{getSelectedCounts(activeBlock).critCount}</span>
-                          </div>
-                          <div className="flex flex-col items-center">
-                            <span className="text-[9px] font-bold text-gray-400 uppercase tracking-tighter leading-none">Sab.</span>
-                            <span className="text-xs font-bold text-primary/60 leading-none mt-1">{getSelectedCounts(activeBlock).saberCount}</span>
-                          </div>
-                        </div>
-                        <button
-                          onClick={handleGeneratePlanning}
-                          disabled={isAnalyzing || getSelectedCounts(activeBlock).critCount === 0}
-                          className={`flex items-center gap-1.5 px-3 py-1 rounded-full font-bold text-[9px] uppercase tracking-widest transition-all ${
-                            isAnalyzing || getSelectedCounts(activeBlock).critCount === 0
-                              ? 'bg-gray-50 text-gray-300'
-                              : 'bg-primary/10 text-primary hover:bg-primary/20'
-                          }`}
-                        >
-                          {isAnalyzing ? <Loader2 className="w-3 h-3 animate-spin" /> : <ChevronRight className="w-3 h-3" />}
-                          Continuar
-                        </button>
-                      </div>
-                    )}
-
-                    {/* Header action buttons removed as per user request */}
+                    
+                    <input
+                      type="text"
+                      value={activeBlock.title || ''}
+                      onChange={(e) => updateBlock(activeBlock.id, { title: e.target.value })}
+                      placeholder="Título de la Situación..."
+                      className="flex-1 bg-transparent border-none p-0 focus:ring-0 font-bold text-lg text-primary placeholder:text-gray-300"
+                    />
                   </div>
                 </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </header>
 
-        <div className="flex-1 overflow-y-auto bg-gray-50/50 p-8 max-w-5xl mx-auto w-full no-scrollbar">
-          {!activeBlock ? (
-            <div className="h-full flex flex-col items-center justify-center text-center opacity-40">
-              <BookOpen className="w-16 h-16 mb-4" />
-              <h2 className="text-xl font-bold">Selecciona o crea una situación</h2>
-              <p>Comienza a planificar tu Situación de Aprendizaje.</p>
-            </div>
-          ) : !activeBlock.initialized ? (
-            // Step 1: Initial configuration (Stage/Level)
-            <div className="h-full flex flex-col items-center justify-center space-y-12 max-w-2xl mx-auto text-center">
+                <div className="flex items-center gap-2 px-6">
+                  {activeBlock.initialized && activeBlock.creationMode && (
+                    <button 
+                      onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+                      className="md:hidden p-2 hover:bg-gray-50 rounded-xl text-gray-500 transition-colors"
+                    >
+                      {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+                    </button>
+                  )}
+                </div>
+              </div>
+              
+              <AnimatePresence>
+                {activeBlock.initialized && activeBlock.creationMode && (
+                  <motion.div 
+                    className={`${isMobileMenuOpen ? 'block' : 'hidden md:block'} border-t border-gray-100 bg-white md:bg-gray-50/20 overflow-hidden`}
+                  >
+                    <div className="px-6 py-2 flex flex-col md:flex-row items-center justify-between gap-4">
+                      <div className="relative w-full md:w-64">
+                        <select
+                          value={activeBlock.step}
+                          onChange={(e) => {
+                            updateBlock(activeBlock.id, { step: e.target.value as any });
+                            setIsMobileMenuOpen(false);
+                          }}
+                          className="w-full appearance-none bg-white md:bg-white border border-gray-100 rounded-xl px-4 py-2 pr-10 text-[10px] font-bold uppercase tracking-widest text-primary focus:outline-none focus:ring-2 focus:ring-primary/20 shadow-sm transition-all cursor-pointer"
+                        >
+                          {[
+                            { id: 'selection', label: '1. Situación' },
+                            { id: 'planning', label: '2. Propuesta' },
+                            { id: 'sequencing', label: '3. Aula' },
+                            { id: 'evaluation', label: '4. Evaluación' },
+                            { id: 'docente_eval', label: '5. Práctica Docente' }
+                          ].map((s) => (
+                            <option key={s.id} value={s.id}>
+                              {s.label}
+                            </option>
+                          ))}
+                        </select>
+                        <div className="absolute inset-y-0 right-0 flex items-center px-3 pointer-events-none text-gray-400">
+                          <ChevronDown className="w-3.5 h-3.5" />
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between md:justify-end w-full md:w-auto gap-4 md:gap-3">
+                        {activeBlock.step === 'selection' && (
+                          <div className="flex items-center gap-3 bg-white px-4 py-1.5 rounded-full border border-gray-100 shadow-sm">
+                            <div className="flex gap-3 pr-3 border-r border-gray-100">
+                              <div className="flex flex-col items-center">
+                                <span className="text-[9px] font-bold text-gray-400 uppercase tracking-tighter leading-none">Comp.</span>
+                                <span className="text-xs font-bold text-primary leading-none mt-1">{getSelectedCounts(activeBlock).ceCount}</span>
+                              </div>
+                              <div className="flex flex-col items-center">
+                                <span className="text-[9px] font-bold text-gray-400 uppercase tracking-tighter leading-none">Crit.</span>
+                                <span className="text-xs font-bold text-accent leading-none mt-1">{getSelectedCounts(activeBlock).critCount}</span>
+                              </div>
+                              <div className="flex flex-col items-center">
+                                <span className="text-[9px] font-bold text-gray-400 uppercase tracking-tighter leading-none">Sab.</span>
+                                <span className="text-xs font-bold text-primary/60 leading-none mt-1">{getSelectedCounts(activeBlock).saberCount}</span>
+                              </div>
+                            </div>
+                            <button
+                              onClick={handleGeneratePlanning}
+                              disabled={isAnalyzing || getSelectedCounts(activeBlock).critCount === 0}
+                              className={`flex items-center gap-1.5 px-3 py-1 rounded-full font-bold text-[9px] uppercase tracking-widest transition-all ${
+                                isAnalyzing || getSelectedCounts(activeBlock).critCount === 0
+                                  ? 'bg-gray-50 text-gray-300'
+                                  : 'bg-primary/10 text-primary hover:bg-primary/20'
+                              }`}
+                            >
+                              {isAnalyzing ? <Loader2 className="w-3 h-3 animate-spin" /> : <ChevronRight className="w-3 h-3" />}
+                              Continuar
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </header>
+
+            <div className="flex-1 overflow-y-auto bg-gray-50/50 p-8 max-w-5xl mx-auto w-full no-scrollbar">
+              {!activeBlock.initialized ? (
+                // Step 1: Initial configuration (Stage/Level)
+                <div className="h-full flex flex-col items-center justify-center space-y-12 max-w-2xl mx-auto text-center">
               <div className="space-y-4">
                 <h2 className="text-4xl font-bold serif text-primary">Nueva Situación</h2>
                 <p className="text-lg text-gray-500">Comencemos definiendo el nivel y la etapa educativa.</p>
@@ -2692,16 +3013,16 @@ export default function App() {
 
                   <div className="flex justify-center pt-8">
                     <button
-                      onClick={() => updateBlock(activeBlock.id, { step: 'diversity' })}
+                      onClick={() => updateBlock(activeBlock.id, { step: 'docente_eval' })}
                       className="px-8 py-3 bg-primary text-white rounded-2xl font-bold uppercase tracking-widest hover:scale-105 transition-all shadow-lg shadow-primary/20 flex items-center gap-2"
                     >
-                      Continuar a Diversidad <ChevronRight className="w-4 h-4" />
+                      Continuar a Práctica Docente <ChevronRight className="w-4 h-4" />
                     </button>
                   </div>
                 </div>
               )}
             </div>
-          ) : activeBlock.step === 'diversity' ? (
+          ) : activeBlock.step === 'docente_eval' ? (
             <div className="max-w-4xl mx-auto space-y-12 py-8 pb-32">
               <div className="space-y-4">
                 <div className="flex items-center gap-4">
@@ -2711,88 +3032,44 @@ export default function App() {
                   >
                     <ChevronLeft className="w-6 h-6" />
                   </button>
-                  <h2 className="text-4xl font-bold serif text-primary">Atención a la Diversidad</h2>
+                  <h2 className="text-4xl font-bold serif text-primary">Evaluación de la Práctica Docente</h2>
                 </div>
-                <p className="text-gray-500 text-lg">Personalizamos el aprendizaje para no dejar a nadie atrás.</p>
+                <p className="text-gray-500 text-lg">Indicadores de reflexión sobre el proceso de enseñanza y aprendizaje.</p>
               </div>
 
-              <div className="bg-white rounded-[2.5rem] p-8 space-y-6 border border-gray-100 shadow-xl shadow-gray-200/50">
-                <div className="space-y-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-primary/5 rounded-2xl flex items-center justify-center text-primary">
-                      <Users className="w-5 h-5" />
+              <div className="bg-white rounded-[2.5rem] p-10 space-y-10 border border-gray-100 shadow-xl shadow-gray-200/50">
+                {[
+                  { field: 'materiaResults', label: 'Resultados de la evaluación de la materia', placeholder: 'Reflexiona sobre el grado de consecución de los objetivos...' },
+                  { field: 'metodosPedagogicos', label: 'Métodos didácticos y Pedagógicos', placeholder: '¿Han sido efectivos los métodos empleados? ¿Se ha fomentado la participación?' },
+                  { field: 'materialesRecursos', label: 'Adecuación de los materiales y recursos didácticos', placeholder: '¿Los materiales han facilitado el aprendizaje? ¿Eran accesibles?' },
+                  { field: 'eficaciaDiversidad', label: 'Eficacia de las medidas de atención a la diversidad', placeholder: '¿Se han atendido correctamente las diferencias individuales?' },
+                  { field: 'instrumentosVariedad', label: 'Variedad y accesibilidad de los instrumentos de evaluación', placeholder: '¿Se han usado instrumentos diversos y adaptados?' }
+                ].map((item, idx) => (
+                  <div key={item.field} className="space-y-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 bg-primary/5 rounded-xl flex items-center justify-center text-primary text-xs font-bold">
+                        {idx + 1}
+                      </div>
+                      <h3 className="font-bold text-gray-700 text-sm">{item.label}</h3>
                     </div>
-                    <div>
-                      <h3 className="font-bold text-primary">Necesidades del Aula</h3>
-                      <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Describe quién necesita apoyo especial</p>
-                    </div>
-                  </div>
-                  
-                  <div className="relative">
                     <textarea 
-                      placeholder="Ej: Un alumno con TEA con alta funcionalidad, dos alumnos con TDAH y una alumna con altas capacidades..."
-                      value={activeBlock.diversity?.generalObservations || ''}
-                      onChange={(e) => updateBlock(activeBlock.id, { diversity: { ...activeBlock.diversity!, generalObservations: e.target.value } })}
-                      className="w-full h-32 p-6 bg-gray-50 rounded-3xl border-none focus:ring-2 focus:ring-primary/20 text-sm leading-relaxed"
+                      placeholder={item.placeholder}
+                      value={(activeBlock.docenteEval as any)?.[item.field] || ''}
+                      onChange={(e) => {
+                        const current = activeBlock.docenteEval || {};
+                        updateBlock(activeBlock.id, { docenteEval: { ...current, [item.field]: e.target.value } });
+                      }}
+                      className="w-full h-32 p-6 bg-gray-50 rounded-2xl border-none focus:ring-2 focus:ring-primary/10 text-sm leading-relaxed outline-none transition-all"
                     />
                   </div>
-                  
-                  <button
-                    onClick={() => handleGenerateDiversityAction(activeBlock.diversity?.generalObservations || '')}
-                    disabled={isAnalyzing || !activeBlock.diversity?.generalObservations}
-                    className="w-full py-4 bg-primary text-white rounded-3xl font-bold text-lg hover:bg-primary/90 transition-all shadow-xl shadow-primary/20 flex items-center justify-center gap-3"
-                  >
-                    {isAnalyzing ? <Loader2 className="w-6 h-6 animate-spin" /> : <Sparkles className="w-6 h-6" />}
-                    <span>Generar Medidas Específicas</span>
-                  </button>
-                </div>
-
-                {activeBlock.diversity?.measures && activeBlock.diversity.measures.length > 0 && (
-                  <div className="space-y-6 pt-6 border-t border-gray-50">
-                    <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest text-center">Propuestas de Intervención</h4>
-                    <div className="grid grid-cols-1 gap-4">
-                      {activeBlock.diversity.measures.map((measure, idx) => (
-                        <motion.div
-                          key={measure.id}
-                          initial={{ opacity: 0, x: -10 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          transition={{ delay: idx * 0.1 }}
-                          className="bg-gray-50 rounded-2xl p-6 border border-gray-100 flex flex-col gap-3"
-                        >
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                              <span className="px-3 py-1 bg-primary text-[9px] font-bold text-white rounded-lg uppercase tracking-widest">
-                                {measure.type}
-                              </span>
-                              <span className="text-[10px] font-bold text-gray-400 uppercase">
-                                {measure.need}
-                              </span>
-                            </div>
-                          </div>
-                          
-                          <div className="space-y-2">
-                            <p className="text-sm font-bold text-primary">Medida propuesta:</p>
-                            <p className="text-sm text-gray-600 leading-relaxed">{measure.measure}</p>
-                          </div>
-                          
-                          <div className="p-4 bg-white/50 rounded-xl border border-white/50">
-                            <p className="text-[10px] font-bold text-accent uppercase tracking-widest mb-1 flex items-center gap-1">
-                              <Compass className="w-3 h-3" /> Ajustes Metodológicos
-                            </p>
-                            <p className="text-xs text-gray-500 leading-relaxed italic">{measure.methodologyAdjustments}</p>
-                          </div>
-                        </motion.div>
-                      ))}
-                    </div>
-                  </div>
-                )}
+                ))}
               </div>
               
-              <div className="flex flex-col md:flex-row items-center justify-center gap-4 pt-8">
+              <div className="flex flex-col md:flex-row items-center justify-center gap-4 pt-12">
                 <button
                   onClick={() => handleExport()}
                   disabled={isExporting}
-                  className="px-10 py-4 bg-primary/10 text-primary rounded-[2rem] font-bold text-lg hover:bg-primary/20 transition-all flex items-center gap-3"
+                  className="px-8 py-4 bg-primary/10 text-primary rounded-3xl font-bold text-lg hover:bg-primary/20 transition-all flex items-center gap-3"
                 >
                   <Download className="w-5 h-5" />
                   <span>Exportar a texto plano</span>
@@ -2800,7 +3077,7 @@ export default function App() {
                 <button
                   onClick={() => handleExportPDF()}
                   disabled={isExporting}
-                  className="px-12 py-4 bg-primary text-white rounded-[2rem] font-bold text-xl hover:scale-105 transition-all shadow-2xl shadow-primary/30 flex items-center gap-3"
+                  className="px-10 py-5 bg-primary text-white rounded-[2rem] font-bold text-xl hover:scale-105 transition-all shadow-2xl shadow-primary/30 flex items-center gap-3"
                 >
                   <FileText className="w-6 h-6" />
                   <span>Exportar a PDF</span>
@@ -2974,6 +3251,308 @@ export default function App() {
             </motion.div>
           ) : null}
         </div>
+        </>
+        ) : activeGroupId ? (
+          <div className="flex-1 flex flex-col overflow-hidden bg-gray-50/30">
+            {(() => {
+              const group = studentGroups.find(g => g.id === activeGroupId);
+              if (!group) return null;
+              
+              return (
+                <div className="flex-1 overflow-y-auto p-8 md:p-12 space-y-12">
+                  <motion.header 
+                    initial={{ opacity: 0, y: -20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="flex flex-col md:flex-row items-center justify-between gap-6"
+                  >
+                    <div className="flex items-center gap-6">
+                      <div className="p-5 bg-primary shadow-xl shadow-primary/20 rounded-[2.5rem] text-white">
+                        <Users className="w-8 h-8" />
+                      </div>
+                      <div>
+                        <h1 className="text-3xl font-bold text-primary">Grupo: {group.course} {group.letter}</h1>
+                        <p className="text-gray-500 font-medium">{group.school}</p>
+                      </div>
+                    </div>
+                  </motion.header>
+
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
+                    <motion.div 
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: 0.1 }}
+                      className="lg:col-span-1 space-y-8"
+                    >
+                       <section className="bg-white rounded-[2.5rem] p-8 border border-gray-100 shadow-xl shadow-gray-200/50 space-y-6">
+                          <div className="flex items-center gap-3 border-b border-gray-50 pb-4">
+                            <Compass className="w-5 h-5 text-accent" />
+                            <h3 className="font-bold text-primary uppercase tracking-widest text-xs">Perfil del Grupo</h3>
+                          </div>
+                          <div className="space-y-4">
+                            <div>
+                              <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">Descripción General</p>
+                              <p className="text-sm text-gray-600 leading-relaxed">{group.studentDescription}</p>
+                            </div>
+                            <div>
+                              <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">Necesidades Específicas</p>
+                              <div className="p-4 bg-accent/5 border border-accent/10 rounded-2xl">
+                                <p className="text-sm text-accent leading-relaxed font-bold italic">{group.needsDescription}</p>
+                              </div>
+                            </div>
+                          </div>
+                       </section>
+                    </motion.div>
+
+                    <motion.div 
+                      initial={{ opacity: 0, x: 20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: 0.2 }}
+                      className="lg:col-span-2 space-y-8"
+                    >
+                       <section className="space-y-6">
+                          <div className="flex items-center justify-between">
+                            <h3 className="text-xl font-bold text-primary flex items-center gap-3 italic">
+                              <Star className="w-5 h-5 text-accent" />
+                              Situaciones de Aprendizaje Asignadas
+                            </h3>
+                          </div>
+                          
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            {blocks.map(block => {
+                              const isAssigned = block.selectedGroupIds?.includes(group.id);
+                              const groupDiversity = block.groupDiversity?.[group.id];
+                              
+                              if (!isAssigned) return null;
+                              
+                              return (
+                                <motion.div 
+                                  layout
+                                  key={block.id} 
+                                  className="bg-white rounded-[2rem] border border-gray-100 p-6 shadow-sm hover:shadow-xl transition-all space-y-4"
+                                >
+                                  <div className="flex items-center justify-between gap-4">
+                                    <h4 className="font-bold text-primary leading-tight text-sm line-clamp-2">{block.title || 'SdA sin título'}</h4>
+                                    <button 
+                                      onClick={() => {
+                                        const current = block.selectedGroupIds || [];
+                                        updateBlock(block.id, { selectedGroupIds: current.filter(id => id !== group.id) });
+                                      }}
+                                      className="text-gray-300 hover:text-red-500 p-2 shrink-0"
+                                    >
+                                      <X className="w-4 h-4" />
+                                    </button>
+                                  </div>
+
+                                  {!groupDiversity ? (
+                                    <button
+                                      onClick={() => handleGenerateDiversityAction(group.needsDescription, group.id)}
+                                      disabled={isAnalyzing}
+                                      className="w-full py-4 bg-primary/5 text-primary rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-primary/10 transition-all flex items-center justify-center gap-2"
+                                    >
+                                      {isAnalyzing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                                      Generar Adaptaciones
+                                    </button>
+                                  ) : (
+                                    <div className="space-y-4 pt-4 border-t border-gray-50">
+                                      <div className="flex items-center justify-between">
+                                        <p className="text-[10px] font-bold text-green-500 uppercase flex items-center gap-1">
+                                          <CheckCircle2 className="w-3 h-3" /> Adaptaciones Generadas
+                                        </p>
+                                        <button 
+                                          onClick={() => handleGenerateDiversityAction(group.needsDescription, group.id)}
+                                          disabled={isAnalyzing}
+                                          className="text-[9px] font-bold text-gray-400 hover:text-primary underline uppercase tracking-widest"
+                                        >
+                                          Regenerar
+                                        </button>
+                                      </div>
+                                      <div className="space-y-2">
+                                        {groupDiversity.measures.slice(0, 3).map((m, i) => (
+                                          <div key={i} className="text-[10px] bg-gray-50 p-2 rounded-xl text-gray-500 border border-gray-100">
+                                            <span className="font-bold text-primary">{m.type}:</span> {m.measure.substring(0, 80)}...
+                                          </div>
+                                        ))}
+                                      </div>
+                                      <button 
+                                        onClick={() => { setActiveBlockId(block.id); setActiveGroupId(null); }}
+                                        className="w-full py-3 text-[10px] font-bold text-primary uppercase border-2 border-primary/10 rounded-2xl hover:bg-primary hover:text-white hover:border-primary transition-all"
+                                      >
+                                        Ver todas las medidas
+                                      </button>
+                                    </div>
+                                  )}
+                                </motion.div>
+                              );
+                            })}
+                            
+                            <div className="bg-gray-200/20 rounded-[2rem] border-2 border-dashed border-gray-200 p-6 flex flex-col items-center justify-center text-center gap-3 group hover:border-primary/30 transition-all">
+                               <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center text-gray-300 group-hover:text-primary shadow-sm transition-all">
+                                 <Plus className="w-5 h-5" />
+                               </div>
+                               <div className="space-y-2 w-full">
+                                 <p className="text-xs font-bold text-gray-400 group-hover:text-primary transition-colors uppercase tracking-widest">Asignar SdA</p>
+                                 <select 
+                                   onChange={(e) => {
+                                     const blockId = e.target.value;
+                                     if (!blockId) return;
+                                     const b = blocks.find(x => x.id === blockId);
+                                     if (b) {
+                                       const current = b.selectedGroupIds || [];
+                                       if (!current.includes(group.id)) {
+                                         updateBlock(b.id, { selectedGroupIds: [...current, group.id] });
+                                       }
+                                     }
+                                   }}
+                                   value=""
+                                   className="text-[10px] font-bold bg-white border border-gray-100 rounded-xl p-3 w-full focus:ring-2 focus:ring-primary/10 outline-none cursor-pointer uppercase tracking-wider text-gray-500"
+                                 >
+                                   <option value="">Selecciona una SdA...</option>
+                                   {blocks.filter(b => !b.selectedGroupIds?.includes(group.id)).map(b => (
+                                     <option key={b.id} value={b.id}>{b.title || `SdA ${b.id.substring(0, 5)}`}</option>
+                                   ))}
+                                 </select>
+                               </div>
+                            </div>
+                          </div>
+                       </section>
+                    </motion.div>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        ) : viewSelection ? (
+          <div className="flex-1 flex flex-col overflow-hidden">
+            <header className="bg-white border-b border-gray-100 p-8 flex items-center justify-between shrink-0">
+               <div className="flex items-center gap-6">
+                 <div className="p-4 bg-primary/5 rounded-3xl text-primary">
+                   {getStageIcon(viewSelection.stage)}
+                 </div>
+                 <div>
+                   <h1 className="text-3xl font-bold text-primary uppercase tracking-tight flex items-center gap-3">
+                     {viewSelection.level}
+                     <span className="text-gray-300 font-light">/</span>
+                     <span className="text-gray-400 font-medium">{viewSelection.stage}</span>
+                   </h1>
+                   <p className="text-sm text-gray-400 mt-1">Mis situaciones de aprendizaje para este curso</p>
+                 </div>
+               </div>
+               <button 
+                 onClick={() => addNewBlock(viewSelection.stage, viewSelection.level)}
+                 className="bg-primary text-white px-8 py-4 rounded-[2rem] font-bold uppercase tracking-widest text-xs flex items-center gap-3 hover:scale-105 active:scale-95 transition-all shadow-2xl shadow-primary/20 group"
+               >
+                 <Plus className="w-5 h-5 group-hover:rotate-90 transition-transform" />
+                 Nueva Situación
+               </button>
+            </header>
+            
+            <div className="flex-1 overflow-y-auto p-8 lg:p-12 bg-gray-50/30">
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8">
+                {blocks
+                  .filter(b => b.stage === viewSelection.stage && b.level === viewSelection.level)
+                  .map(block => (
+                    <div 
+                      key={block.id}
+                      className="group bg-white rounded-[2.5rem] border border-gray-100 p-8 shadow-sm hover:shadow-2xl hover:-translate-y-2 transition-all flex flex-col h-full overflow-hidden relative"
+                    >
+                      <div className="flex-1 cursor-pointer" onClick={() => { setActiveBlockId(block.id); setViewSelection(null); setActiveGroupId(null); }}>
+                        <div className="flex items-center justify-between mb-8">
+                          <div className={`px-4 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-widest ${
+                            block.initialized ? 'bg-green-50 text-green-600' : 'bg-amber-50 text-amber-600'
+                          }`}>
+                            {block.initialized ? block.step : 'Configuración'}
+                          </div>
+                          <p className="text-[10px] font-bold text-gray-300 uppercase tracking-widest">
+                            SdA • {block.id.startsWith('block-') ? new Date(parseInt(block.id.split('-')[1])).toLocaleDateString() : 'Reciente'}
+                          </p>
+                        </div>
+                        <h3 className="text-xl font-bold text-primary mb-4 leading-tight group-hover:text-accent transition-colors">
+                          {block.title || 'Nueva Situación'}
+                        </h3>
+                        <p className="text-sm text-gray-400 line-clamp-3 leading-relaxed mb-6 font-medium">
+                          {block.plan?.justification || 'Sin descripción aún. Haz clic para comenzar a planificar esta situación de aprendizaje.'}
+                        </p>
+                      </div>
+                      
+                      <div className="pt-6 border-t border-gray-50 flex items-center justify-between gap-4">
+                        <button 
+                           onClick={() => handleExport(block)}
+                           disabled={!['sequencing', 'evaluation', 'diversity'].includes(block.step)}
+                           className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-2xl text-[10px] font-bold uppercase tracking-widest bg-gray-50 text-gray-500 hover:bg-primary hover:text-white disabled:opacity-20 disabled:cursor-not-allowed transition-all"
+                           title={!['sequencing', 'evaluation', 'diversity'].includes(block.step) ? 'Completa la secuenciación para exportar' : 'Exportar SdA'}
+                        >
+                           <Download className="w-4 h-4" />
+                           <span>Exportar</span>
+                        </button>
+                        <button 
+                           onClick={() => removeBlock(block.id)}
+                           className="p-3.5 rounded-2xl text-red-300 hover:bg-red-50 hover:text-red-500 transition-all"
+                           title="Eliminar SdA"
+                        >
+                           <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                
+                {/* Empty state Add button */}
+                <button 
+                  onClick={() => addNewBlock(viewSelection.stage, viewSelection.level)}
+                  className="group rounded-[2.5rem] border-2 border-dashed border-gray-200 p-8 flex flex-col items-center justify-center text-center gap-4 hover:border-primary hover:bg-white transition-all min-h-[320px]"
+                >
+                  <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center text-gray-300 group-hover:bg-primary/5 group-hover:text-primary transition-all">
+                    <Plus className="w-8 h-8" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-gray-400 group-hover:text-primary transition-colors">Crear nueva SdA</p>
+                    <p className="text-xs text-gray-300 mt-1">Para {viewSelection.level}</p>
+                  </div>
+                </button>
+              </div>
+              
+              {blocks.filter(b => b.stage === viewSelection.stage && b.level === viewSelection.level).length === 0 && (
+                <div className="mt-12 p-12 bg-white rounded-[3rem] border border-gray-100 flex flex-col items-center justify-center text-center space-y-6">
+                   <div className="w-32 h-32 bg-gray-50 rounded-full flex items-center justify-center text-gray-200">
+                     <BookOpen className="w-16 h-16" />
+                   </div>
+                   <div className="space-y-2">
+                     <h2 className="text-2xl font-bold text-primary">No hay situaciones todavía</h2>
+                     <p className="text-gray-400 max-w-sm mx-auto">Comienza ahora creando tu primera situación de aprendizaje para este nivel educativo.</p>
+                   </div>
+                </div>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div className="flex-1 flex flex-col items-center justify-center p-12 text-center space-y-8 bg-white h-full relative overflow-hidden">
+             {/* Decorative Background Elements */}
+             <div className="absolute top-0 right-0 w-96 h-96 bg-primary/5 rounded-full blur-3xl -mr-48 -mt-48" />
+             <div className="absolute bottom-0 left-0 w-96 h-96 bg-accent/5 rounded-full blur-3xl -ml-48 -mb-48" />
+             
+             <div className="relative z-10 space-y-8 max-w-2xl">
+               <div className="w-32 h-32 bg-primary shadow-2xl shadow-primary/30 rounded-[2.5rem] flex items-center justify-center text-white mx-auto rotate-12 hover:rotate-0 transition-all duration-500">
+                 <Layout className="w-16 h-16" />
+               </div>
+               <div className="space-y-4">
+                 <div className="flex items-center justify-center gap-2">
+                   <span className="text-5xl font-bold tracking-tighter serif text-primary italic">Kerygma</span>
+                   <span className="text-5xl font-black tracking-tighter text-accent">APP</span>
+                 </div>
+                 <h2 className="text-2xl font-bold text-primary">Planificador de Religión Católica</h2>
+                 <p className="text-gray-500 text-lg leading-relaxed">
+                   Planifica tus Situaciones de Aprendizaje de forma inteligente y creativa con Kerygma App.
+                 </p>
+               </div>
+               <div className="pt-8 border-t border-gray-100 flex flex-col items-center gap-4">
+                 <p className="text-[10px] font-bold text-gray-300 uppercase tracking-widest">Para comenzar</p>
+                 <div className="flex items-center gap-3 text-primary font-bold animate-bounce bg-primary/5 px-6 py-3 rounded-full">
+                   <ChevronLeft className="w-5 h-5" />
+                   <span>Selecciona un curso en el menú lateral</span>
+                 </div>
+               </div>
+             </div>
+          </div>
+        )}
       </main>
     </div>
 
@@ -3201,6 +3780,17 @@ export default function App() {
       <div className="md:hidden p-4 bg-white border-t border-gray-200">
         <p className="text-center text-[10px] text-gray-400 uppercase tracking-widest">Kerygma APP</p>
       </div>
+
+      <AddGroupModal 
+        isOpen={showAddGroupModal} 
+        onClose={() => {
+          setShowAddGroupModal(false);
+          setEditingGroupId(null);
+        }} 
+        onSave={handleSaveGroup} 
+        existingSchools={Array.from(new Set(studentGroups.map(g => g.school)))}
+        editingGroup={editingGroupId ? studentGroups.find(g => g.id === editingGroupId) : null}
+      />
     </div>
   );
 }

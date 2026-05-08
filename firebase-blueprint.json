@@ -21,12 +21,31 @@
         "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["id", "title", "userId"]
+    },
+    "StudentGroup": {
+      "title": "Student Group",
+      "description": "Represents a group of students.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "course": { "type": "string" },
+        "letter": { "type": "string" },
+        "school": { "type": "string" },
+        "studentDescription": { "type": "string" },
+        "needsDescription": { "type": "string" },
+        "userId": { "type": "string" }
+      },
+      "required": ["course", "letter", "school", "userId"]
     }
   },
   "firestore": {
     "/situations/{situationId}": {
       "schema": "LearningSituation",
       "description": "Collection of learning situations indexed by unique ID."
+    },
+    "/studentGroups/{groupId}": {
+      "schema": "StudentGroup",
+      "description": "Collection of student groups indexed by unique ID."
     }
   }
 }

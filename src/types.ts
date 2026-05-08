@@ -54,12 +54,21 @@ export interface DiversitySection {
   generalObservations?: string;
 }
 
+export interface DocenteEvalSection {
+  materiaResults?: string;
+  metodosPedagogicos?: string;
+  materialesRecursos?: string;
+  eficaciaDiversidad?: string;
+  instrumentosVariedad?: string;
+}
+
 export interface StudentGroup {
   id: string;
   userId: string;
   course: string;
   letter: string;
   school: string;
+  stage?: 'Infantil' | 'Primaria' | 'Secundaria' | 'Bachillerato';
   studentDescription: string;
   needsDescription: string;
 }
@@ -71,7 +80,7 @@ export interface CurriculumBlock {
   stage: 'Infantil' | 'Primaria' | 'Secundaria' | 'Bachillerato';
   level: string; 
   initialized?: boolean;
-  step: 'selection' | 'planning' | 'sequencing' | 'evaluation' | 'diversity';
+  step: 'selection' | 'planning' | 'sequencing' | 'evaluation' | 'docente_eval';
   creationMode?: 'curriculum' | 'content';
   materials?: string; 
   competenciasEspecíficas: Competencia[];
@@ -81,9 +90,11 @@ export interface CurriculumBlock {
   plan?: UnitPlan;
   activities?: Activity[];
   evaluation?: EvaluationSection;
+  docenteEval?: DocenteEvalSection;
   diversity?: DiversitySection;
   updatedAt?: any;
   selectedGroupIds?: string[];
+  groupDiversity?: { [groupId: string]: DiversitySection };
 }
 
 export interface Competencia {

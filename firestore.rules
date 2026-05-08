@@ -74,10 +74,29 @@ service cloud.firestore {
 
     // Match StudentGroups collection
     match /studentGroups/{groupId} {
-      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      // Pillar 8: Secure List Queries
+      allow list: if isSignedIn();
       allow get: if isSignedIn() && resource.data.userId == request.auth.uid;
-      allow create, update, delete: if isSignedIn() && 
-                                      incoming().userId == request.auth.uid;
+      
+      // Validation Helper for Groups
+      function isValidGroup(data) {
+        return data.userId == request.auth.uid &&
+               data.course is string && data.course.size() > 0 &&
+               data.letter is string &&
+               data.school is string && data.school.size() > 0;
+      }
+      
+      allow create: if isSignedIn() && 
+                      isValidId(groupId) &&
+                      isValidGroup(incoming()) &&
+                      incoming().userId == request.auth.uid;
+                      
+      allow update: if isSignedIn() && 
+                      existing().userId == request.auth.uid &&
+                      isValidGroup(incoming()) &&
+                      incoming().userId == request.auth.uid; // Immortality/Identity integrity
+                      
+      allow delete: if isSignedIn() && existing().userId == request.auth.uid;
     }
   }
 }
