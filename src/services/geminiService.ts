@@ -383,7 +383,7 @@ export async function generateEvaluationInstruments(
   activities: { title: string, description: string }[],
   content: string,
   extraNotes?: string
-): Promise<{ instruments: { name: string, description: string, linkedActivitiesIds: string[], canvaPrompt: string }[] }> {
+): Promise<{ instruments: { name: string, description: string, linkedActivitiesIds: string[], canvaPrompt: string, type: 'Rúbrica' | 'Lista de Cotejo' | 'Prueba Escrita' | 'Escala de Valoración' | 'Otro', content: any }[] }> {
   const ai = await getAI();
   if (!ai) return { instruments: [] };
 
@@ -395,29 +395,33 @@ export async function generateEvaluationInstruments(
 
   ${extraNotes ? `Preferencias del docente para la evaluación: "${extraNotes}"` : ''}
   
-  Propón 3-4 instrumentos de evaluación variados (ej: rúbrica de observación, diana de autoevaluación, portafolio digital, escala de estimación, cuestionario gamificado, etc.) que permitan evaluar el proceso y el producto final.
-  Asegúrate de priorizar o incluir los instrumentos o modalidades indicadas por el docente en sus preferencias si las hubiera.
-  Para cada instrumento, detalla:
-  1. Nombre del instrumento.
-  2. Descripción de cómo se usa y qué evalúa exactamente.
-  3. Vinculación con las actividades (índices 0-indexados de la lista de actividades).
-  4. Un prompt o descripción técnica para poder generar este instrumento en una herramienta de diseño como Canva o similar.
+  Propón 3 instrumentos de evaluación que abarquen el proceso y el producto final.
   
-  Responde ÚNICAMENTE con un objeto JSON:
+  CADA instrumento DEBE incluir su 'content' completo (NO USES PLACEHOLDERS NI RESÚMENES).
+  - Rúbrica: Objeto con "headers" y "rows" (mínimo 3 criterios con descripciones detalladas).
+  - Lista de Cotejo: Objeto con "items" (mínimo 5 indicadores).
+  - Prueba Escrita: Objeto con "questions" (mínimo 3 preguntas).
+  - Escala de Valoración: Objeto con "items" y "scale".
+  - Diana de Autoevaluación: Objeto con "indicators" (mínimo 5 áreas/indicadores de evaluación personal) y "levels" (número de niveles, ej: 4 o 5).
+
+  Responde solo JSON:
   {
     "instruments": [
       {
-        "name": "Nombre",
-        "description": "Descripción detallada",
-        "linkedActivitiesIds": ["0", "1"],
-        "canvaPrompt": "Descripción para crear el diseño del instrumento"
+        "name": "...",
+        "description": "...",
+        "linkedActivitiesIds": ["0"],
+        "canvaPrompt": "...",
+        "type": "Rúbrica | Lista de Cotejo | Prueba Escrita | Escala de Valoración | Diana de Autoevaluación",
+        "content": { ... }
       }
     ]
-  }`;
+  }
+  Sé creativo y pedagógicamente riguroso.`;
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-3.1-flash-lite",
+      model: "gemini-3-flash-preview",
       contents: prompt,
     });
     const text = response.text?.trim() || "{}";
@@ -465,7 +469,7 @@ export async function generateDiversityMeasures(
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-3.1-flash-lite",
+      model: "gemini-3-flash-preview",
       contents: prompt,
     });
     const text = response.text?.trim() || "{}";
@@ -481,32 +485,71 @@ export async function improveInstrument(
   name: string,
   description: string,
   activities: { title: string, description: string }[],
-  content: string
-): Promise<{ name: string, description: string, canvaPrompt: string }> {
+  contentSA: string
+): Promise<{ name: string, description: string, canvaPrompt: string, type: string, content: any }> {
   const ai = await getAI();
-  if (!ai) return { name, description, canvaPrompt: "" };
+  if (!ai) return { name, description, canvaPrompt: "", type: "Otro", content: {} };
 
   const prompt = `Actúa como un experto en evaluación educativa para Religión Católica.
   Tengo el siguiente instrumento de evaluación parcial:
   - Nombre: ${name}
   - Descripción actual: ${description}
   
-  Este instrumento se usará en una situación de aprendizaje con estos contenidos:
-  ${content}
+  Este instrumento se usará en una situación de aprendizaje con estos contenidos: ${contentSA}
   
   Y estas actividades vinculadas:
   ${activities.map((a, i) => `Actividad: ${a.title}. ${a.description}`).join('\n')}
   
-  Mejora, formatea y concreta este instrumento. Hazlo más profesional, pedagógico y útil para el docente. 
-  Asegúrate de que la descripción sea clara y detallada sobre qué se evalúa y cómo.
-  Propón también un "canvaPrompt" (descripción técnica para crear el diseño visual del instrumento en Canva o similar).
+  Genera el contenido REAL, COMPLETO y LISTO PARA IMPRIMIR de este instrumento. No omitas ningún detalle.
+  Define el tipo ('Rúbrica', 'Lista de Cotejo', 'Prueba Escrita', 'Escala de Valoración', 'Diana de Autoevaluación', 'Otro') y crea el "content" adecuado (tabla, lista de preguntas, diana, etc.).
   
   Responde ÚNICAMENTE con un objeto JSON:
   {
     "name": "Nombre mejorado",
-    "description": "Descripción profesional y detallada",
-    "canvaPrompt": "Descripción técnica para el diseño visual"
+    "description": "Descripción detallada",
+    "canvaPrompt": "...",
+    "type": "...",
+    "content": { ... }
   }`;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-3.1-pro-preview",
+      contents: prompt,
+    });
+    const text = response.text?.trim() || "{}";
+    const cleanJson = text.replace(/```json/g, "").replace(/```/g, "").trim();
+    return JSON.parse(cleanJson);
+  } catch (error) {
+    console.error("Error improving instrument:", error);
+    return { name, description, canvaPrompt: "", type: "Otro", content: {} };
+  }
+}
+
+export async function generateDocenteReflection(
+  unitTitle: string,
+  activities: { title: string, description: string }[],
+  content: string,
+  categories: { id: string, label: string }[]
+): Promise<{ [key: string]: string[] }> {
+  const ai = await getAI();
+  if (!ai) return {};
+
+  const prompt = `Actúa como un mentor pedagógico especializado en Religión Católica. 
+  Un docente ha terminado de aplicar la Situación de Aprendizaje titulada "${unitTitle}".
+  
+  CONTEXTO DE LA UNIDAD:
+  - Contenidos: ${content}
+  - Secuencia de actividades: ${activities.map((a, i) => `${i+1}. ${a.title}: ${a.description}`).join('\n')}
+  
+  Necesito que propongas 2-3 preguntas potentes de reflexión para cada una de las siguientes áreas:
+  ${categories.map(c => `- ${c.label} (ID: ${c.id})`).join('\n')}
+  
+  Las preguntas deben ser específicas, no genéricas, relacionándolas con la naturaleza de la asignatura de Religión y con el tipo de actividades propuestas. Busca que el docente reflexione sobre lo que realmente pasó en el aula.
+  
+  Responde ÚNICAMENTE con un objeto JSON (sin bloques markdown) donde las llaves sean los IDs de las áreas proporcionadas y los valores sean arrays de strings (las preguntas).
+  Ejemplo: {"materiaResults": ["¿Cómo...?", "¿Qué...?"], "metodosPedagogicos": [...]}
+  `;
 
   try {
     const response = await ai.models.generateContent({
@@ -517,7 +560,7 @@ export async function improveInstrument(
     const cleanJson = text.replace(/```json/g, "").replace(/```/g, "").trim();
     return JSON.parse(cleanJson);
   } catch (error) {
-    console.error("Error improving instrument:", error);
-    return { name, description, canvaPrompt: "" };
+    console.error("Error generating reflection questions:", error);
+    return {};
   }
 }

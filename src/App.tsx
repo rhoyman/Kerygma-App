@@ -48,9 +48,18 @@ import {
   Cloud,
   Star,
   CheckCircle2,
-  Info
+  Info,
+  Search,
+  MapPin,
+  Package,
+  Users2,
+  ClipboardCheck,
+  RefreshCcw,
+  Eye,
+  Settings2
 } from 'lucide-react';
 import { CurriculumBlock, Competencia, SaberBásico, Criterio, Activity, UnitPlan, EvaluationInstrument, StudentGroup } from './types';
+import { APIProvider, useMapsLibrary } from '@vis.gl/react-google-maps';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { DEFAULT_CURRICULUM } from './data/curriculumDefaults';
@@ -95,6 +104,7 @@ import {
   generateEvaluationInstruments,
   improveInstrument,
   generateDiversityMeasures,
+  generateDocenteReflection,
   isAIConfigured
 } from './services/geminiService';
 import { useAuth } from './lib/AuthContext';
@@ -112,6 +122,14 @@ import {
   serverTimestamp,
   getDocFromServer
 } from 'firebase/firestore';
+
+const GOOGLE_MAPS_API_KEY =
+  process.env.GOOGLE_MAPS_PLATFORM_KEY ||
+  (import.meta as any).env?.VITE_GOOGLE_MAPS_PLATFORM_KEY ||
+  (globalThis as any).GOOGLE_MAPS_PLATFORM_KEY ||
+  '';
+
+const hasValidMapsKey = Boolean(GOOGLE_MAPS_API_KEY) && GOOGLE_MAPS_API_KEY !== 'YOUR_API_KEY';
 
 enum OperationType {
   CREATE = 'create',
@@ -215,13 +233,90 @@ function WelcomeScreen({ onLogin, loading, isFirebaseEnabled }: { onLogin: () =>
 }
 
 
+const SchoolSearchInput = ({ onSchoolSelect, initialValue }: { onSchoolSelect: (data: { name: string, municipality?: string, province?: string, address?: string, placeId?: string }) => void, initialValue?: string }) => {
+  const [inputValue, setInputValue] = useState(initialValue || '');
+  const [autocomplete, setAutocomplete] = useState<google.maps.places.Autocomplete | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const places = useMapsLibrary('places');
+
+  useEffect(() => {
+    if (!places || !inputRef.current) return;
+
+    const options = {
+      fields: ['address_components', 'geometry', 'name', 'formatted_address', 'place_id'],
+      componentRestrictions: { country: 'es' },
+      types: ['school', 'establishment']
+    };
+
+    setAutocomplete(new places.Autocomplete(inputRef.current, options));
+  }, [places]);
+
+  useEffect(() => {
+    if (!autocomplete) return;
+
+    const listener = autocomplete.addListener('place_changed', () => {
+      const place = autocomplete.getPlace();
+      if (!place || !place.name) return;
+
+      let municipality = '';
+      let province = '';
+      let address = place.formatted_address || '';
+
+      if (place.address_components) {
+        for (const component of place.address_components) {
+          if (component.types.includes('locality') || component.types.includes('administrative_area_level_3')) {
+            municipality = component.long_name;
+          }
+          if (component.types.includes('administrative_area_level_2')) {
+            province = component.long_name;
+          }
+        }
+      }
+
+      onSchoolSelect({
+        name: place.name,
+        municipality,
+        province,
+        address,
+        placeId: place.place_id
+      });
+      setInputValue(place.name);
+    });
+
+    return () => {
+      google.maps.event.removeListener(listener);
+    };
+  }, [autocomplete, onSchoolSelect]);
+
+  return (
+    <div className="relative">
+      <input
+        ref={inputRef}
+        type="text"
+        className="w-full h-[52px] p-4 bg-gray-50 border-none rounded-2xl text-sm focus:ring-2 focus:ring-primary/10 outline-none pr-12 placeholder:text-gray-400"
+        placeholder="Nombre o dirección del centro..."
+        value={inputValue}
+        onChange={(e) => setInputValue(e.target.value)}
+      />
+      <div className="absolute right-4 top-1/2 -translate-y-1/2">
+        <Search className="w-5 h-5 text-gray-300" />
+      </div>
+    </div>
+  );
+};
+
 const AddGroupModal = ({ isOpen, onClose, onSave, existingSchools, editingGroup }: { isOpen: boolean, onClose: () => void, onSave: (group: Omit<StudentGroup, 'id' | 'userId'>) => void, existingSchools: string[], editingGroup?: StudentGroup | null }) => {
   const [stage, setStage] = useState<'Infantil' | 'Primaria' | 'Secundaria' | 'Bachillerato'>('Primaria');
   const [course, setCourse] = useState('');
   const [letter, setLetter] = useState('');
   const [school, setSchool] = useState('');
   const [newSchoolName, setNewSchoolName] = useState('');
+  const [municipality, setMunicipality] = useState('');
+  const [province, setProvince] = useState('');
+  const [address, setAddress] = useState('');
+  const [placeId, setPlaceId] = useState('');
   const [isAddingNewSchool, setIsAddingNewSchool] = useState(false);
+  const [isLocatingSchool, setIsLocatingSchool] = useState(false);
   const [studentDescription, setStudentDescription] = useState('');
   const [needsDescription, setNeedsDescription] = useState('');
 
@@ -232,9 +327,14 @@ const AddGroupModal = ({ isOpen, onClose, onSave, existingSchools, editingGroup 
       setCourse(editingGroup.course);
       setLetter(editingGroup.letter);
       setSchool(editingGroup.school);
+      setMunicipality(editingGroup.municipality || '');
+      setProvince(editingGroup.province || '');
+      setAddress(editingGroup.address || '');
+      setPlaceId(editingGroup.placeId || '');
       setStudentDescription(editingGroup.studentDescription);
       setNeedsDescription(editingGroup.needsDescription);
       setIsAddingNewSchool(false);
+      setIsLocatingSchool(false);
     } else {
       // Reset if not editing
       setStage('Primaria');
@@ -242,7 +342,12 @@ const AddGroupModal = ({ isOpen, onClose, onSave, existingSchools, editingGroup 
       setLetter('');
       setSchool('');
       setNewSchoolName('');
+      setMunicipality('');
+      setProvince('');
+      setAddress('');
+      setPlaceId('');
       setIsAddingNewSchool(false);
+      setIsLocatingSchool(false);
       setStudentDescription('');
       setNeedsDescription('');
     }
@@ -267,14 +372,23 @@ const AddGroupModal = ({ isOpen, onClose, onSave, existingSchools, editingGroup 
       school: finalSchool, 
       stage,
       studentDescription, 
-      needsDescription 
+      needsDescription,
+      municipality,
+      province,
+      address,
+      placeId
     });
     // Reset fields
     setCourse('');
     setLetter('');
     setSchool('');
     setNewSchoolName('');
+    setMunicipality('');
+    setProvince('');
+    setAddress('');
+    setPlaceId('');
     setIsAddingNewSchool(false);
+    setIsLocatingSchool(false);
     setStudentDescription('');
     setNeedsDescription('');
   };
@@ -306,8 +420,13 @@ const AddGroupModal = ({ isOpen, onClose, onSave, existingSchools, editingGroup 
                   onChange={e => {
                     if (e.target.value === 'ADD_NEW') {
                       setIsAddingNewSchool(true);
+                      setIsLocatingSchool(false);
                     } else {
                       setSchool(e.target.value);
+                      // Clear other fields when selecting an existing school
+                      setMunicipality('');
+                      setProvince('');
+                      setAddress('');
                     }
                   }}
                 >
@@ -317,19 +436,63 @@ const AddGroupModal = ({ isOpen, onClose, onSave, existingSchools, editingGroup 
                 </select>
               </div>
             ) : (
-              <div className="flex gap-2">
-                <input 
-                  autoFocus
-                  className="flex-1 p-4 bg-gray-50 border-none rounded-2xl text-sm focus:ring-2 focus:ring-primary/10 outline-none" 
-                  placeholder="Nombre del nuevo centro" 
-                  value={newSchoolName} 
-                  onChange={e => setNewSchoolName(e.target.value)} 
-                />
+              <div className="space-y-3">
+                <div className="flex items-center justify-between px-1">
+                  <p className="text-[10px] font-bold text-primary uppercase tracking-widest italic">{isLocatingSchool ? 'Buscador Maps' : 'Nombre Manual'}</p>
+                  <button 
+                    onClick={() => setIsLocatingSchool(!isLocatingSchool)}
+                    className="text-[10px] font-bold text-accent hover:underline uppercase tracking-widest flex items-center gap-1"
+                  >
+                    {isLocatingSchool ? <Edit2 className="w-3 h-3" /> : <Search className="w-3 h-3" />}
+                    {isLocatingSchool ? 'Escribir a mano' : 'Buscar online'}
+                  </button>
+                </div>
+                
+                {isLocatingSchool ? (
+                  <SchoolSearchInput 
+                    onSchoolSelect={(data) => {
+                      setNewSchoolName(data.name);
+                      setMunicipality(data.municipality || '');
+                      setProvince(data.province || '');
+                      setAddress(data.address || '');
+                      setPlaceId(data.placeId || '');
+                    }} 
+                    initialValue={newSchoolName}
+                  />
+                ) : (
+                  <div className="flex gap-2">
+                    <input 
+                      autoFocus
+                      className="flex-1 p-4 bg-gray-50 border-none rounded-2xl text-sm focus:ring-2 focus:ring-primary/10 outline-none" 
+                      placeholder="Nombre del centro" 
+                      value={newSchoolName} 
+                      onChange={e => setNewSchoolName(e.target.value)} 
+                    />
+                  </div>
+                )}
+
+                {(municipality || province) && (
+                  <div className="p-3 bg-gray-50 rounded-2xl flex items-start gap-2 border border-gray-100">
+                    <MapPin className="w-4 h-4 text-accent mt-0.5 shrink-0" />
+                    <div className="text-[11px] text-gray-500">
+                      <span className="font-bold text-gray-700">{municipality}</span> {province && `(${province})`}
+                      {address && <p className="mt-0.5 opacity-70 line-clamp-1">{address}</p>}
+                    </div>
+                  </div>
+                )}
+                
                 <button 
-                  onClick={() => setIsAddingNewSchool(false)}
-                  className="px-4 py-2 text-xs font-bold text-gray-400 hover:text-primary uppercase tracking-widest"
+                  onClick={() => {
+                    setIsAddingNewSchool(false);
+                    setIsLocatingSchool(false);
+                    setNewSchoolName('');
+                    setMunicipality('');
+                    setProvince('');
+                    setAddress('');
+                  }}
+                  className="w-full py-2 text-[10px] font-bold text-gray-400 hover:text-primary uppercase tracking-widest text-center"
                 >
-                  Cancelar
+                  Volver al listado
                 </button>
               </div>
             )}
@@ -756,6 +919,152 @@ export default function App() {
             2: { cellWidth: 'auto' }
           }
         });
+        currentY = (doc as any).lastAutoTable.finalY + 15;
+      }
+
+      // 7. EVALUACIÓN DE LA PRÁCTICA DOCENTE
+      if (targetBlock.docenteEval) {
+        if (currentY > 220) { doc.addPage(); currentY = 20; }
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(14);
+        doc.text("7. EVALUACIÓN DE LA PRÁCTICA DOCENTE", 20, currentY);
+        currentY += 8;
+
+        const evalFields = [
+          { field: 'materiaResults', label: 'Resultados de la materia' },
+          { field: 'metodosPedagogicos', label: 'Métodos didácticos' },
+          { field: 'materialesRecursos', label: 'Materiales y Recursos' },
+          { field: 'eficaciaDiversidad', label: 'Atención a la diversidad' },
+          { field: 'instrumentosVariedad', label: 'Instrumentos de evaluación' }
+        ];
+
+        const evalData: any[][] = [];
+        evalFields.forEach(f => {
+          const isSelected = targetBlock.docenteEval?.selectedCategories?.includes(f.field) ?? false;
+          const questions = targetBlock.docenteEval?.reflectionQuestions?.[f.field];
+          if (isSelected && questions && questions.length > 0) {
+            evalData.push([f.label, questions.join('\n\n')]);
+          }
+        });
+
+        if (evalData.length > 0) {
+          autoTable(doc, {
+            startY: currentY,
+            head: [['ÁREA DE REFLEXIÓN', 'GUÍA DE PREGUNTAS PARA LA REFLEXIÓN']],
+            body: evalData,
+            theme: 'grid',
+            margin: { left: 20, right: 20 },
+            headStyles: { 
+              fillColor: [30, 41, 59], 
+              textColor: 255,
+              fontStyle: 'bold',
+              halign: 'center'
+            },
+            styles: { 
+              fontSize: 8, 
+              cellPadding: 4,
+              valign: 'top',
+              halign: 'left',
+              lineColor: [226, 232, 240],
+              lineWidth: 0.1,
+              overflow: 'linebreak'
+            },
+            columnStyles: { 
+              0: { cellWidth: 50, fontStyle: 'bold' },
+              1: { cellWidth: 'auto' }
+            }
+          });
+        } else {
+          doc.setFont("helvetica", "italic");
+          doc.setFontSize(10);
+          doc.text("No se han registrado reflexiones sobre la práctica docente.", 20, currentY);
+        }
+      }
+
+      // 8. ANEXOS: INSTRUMENTOS DE EVALUACIÓN DETALLADOS
+      const detailedInstruments = targetBlock.evaluation?.instruments.filter(i => i.content);
+      if (detailedInstruments && detailedInstruments.length > 0) {
+        doc.addPage();
+        currentY = 20;
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(16);
+        doc.text("ANEXOS: INSTRUMENTOS DE EVALUACIÓN", 20, currentY);
+        currentY += 15;
+
+        detailedInstruments.forEach((inv, i) => {
+          if (currentY > 240) { doc.addPage(); currentY = 20; }
+          
+          doc.setFontSize(14);
+          doc.setFont("helvetica", "bold");
+          doc.text(`${i + 1}. ${inv.name} (${inv.type || 'Instrumento'})`, 20, currentY);
+          currentY += 8;
+
+          doc.setFontSize(10);
+          doc.setFont("helvetica", "normal");
+          const descLines = doc.splitTextToSize(inv.description, 170);
+          doc.text(descLines, 20, currentY);
+          currentY += (descLines.length * 5) + 8;
+
+          // Render content based on type
+          if (inv.type === 'Rúbrica' && inv.content?.rows) {
+            autoTable(doc, {
+              startY: currentY,
+              head: [['CRITERIO', ...(inv.content.headers || [])]],
+              body: inv.content.rows.map((r: any) => [r.criteria, ...(r.cells || [])]),
+              theme: 'grid',
+              styles: { fontSize: 7, cellPadding: 2 },
+              headStyles: { fillColor: [71, 85, 105] }
+            });
+            currentY = (doc as any).lastAutoTable.finalY + 15;
+          } else if (inv.type === 'Lista de Cotejo' && inv.content?.items) {
+            autoTable(doc, {
+              startY: currentY,
+              head: [['INDICADOR DE LOGRO', 'SÍ/NO/OBS']],
+              body: inv.content.items.map((it: any) => [it, '']),
+              theme: 'grid',
+              styles: { fontSize: 8 },
+              columnStyles: { 1: { cellWidth: 40 } }
+            });
+            currentY = (doc as any).lastAutoTable.finalY + 15;
+          } else if (inv.type === 'Prueba Escrita' && inv.content?.questions) {
+            inv.content.questions.forEach((q: any, qIdx: number) => {
+              if (currentY > 260) { doc.addPage(); currentY = 20; }
+              doc.setFont("helvetica", "bold");
+              doc.text(`${qIdx + 1}. ${q.question}`, 20, currentY);
+              currentY += 6;
+              if (q.options) {
+                q.options.forEach((opt: string) => {
+                  doc.setFont("helvetica", "normal");
+                  doc.text(`[ ] ${opt}`, 25, currentY);
+                  currentY += 5;
+                });
+              } else {
+                currentY += 10; // Espacio para respuesta
+              }
+              currentY += 5;
+            });
+            currentY += 10;
+          } else if (inv.type === 'Escala de Valoración' && inv.content?.items) {
+            autoTable(doc, {
+              startY: currentY,
+              head: [['ÍTEM', ...(inv.content.scale || [])]],
+              body: inv.content.items.map((it: any) => [it, ...(inv.content.scale || []).map(() => '')]),
+              theme: 'grid',
+              styles: { fontSize: 8 }
+            });
+            currentY = (doc as any).lastAutoTable.finalY + 15;
+          } else if (inv.type === 'Diana de Autoevaluación' && inv.content?.indicators) {
+            autoTable(doc, {
+              startY: currentY,
+              head: [['INDICADOR / ÁREA DE MEJORA', '1', '2', '3', '4', '5'].slice(0, (inv.content.levels || 4) + 1)],
+              body: inv.content.indicators.map((it: any) => [it, ...[...Array(inv.content.levels || 4)].map(() => '')]),
+              theme: 'grid',
+              styles: { fontSize: 8 },
+              headStyles: { fillColor: [71, 85, 105] }
+            });
+            currentY = (doc as any).lastAutoTable.finalY + 15;
+          }
+        });
       }
 
       // Save the PDF
@@ -858,13 +1167,94 @@ export default function App() {
       }
     }
 
-    if (block.docenteEval) {
-      content += `## Evaluación de la Práctica Docente\n\n`;
-      if (block.docenteEval.materiaResults) content += `### Resultados de la evaluación de la materia\n${block.docenteEval.materiaResults}\n\n`;
-      if (block.docenteEval.metodosPedagogicos) content += `### Métodos didácticos y Pedagógicos\n${block.docenteEval.metodosPedagogicos}\n\n`;
-      if (block.docenteEval.materialesRecursos) content += `### Adecuación de los materiales y recursos didácticos\n${block.docenteEval.materialesRecursos}\n\n`;
-      if (block.docenteEval.eficaciaDiversidad) content += `### Eficacia de las medidas de atención a la diversidad y a las diferencias individuales\n${block.docenteEval.eficaciaDiversidad}\n\n`;
-      if (block.docenteEval.instrumentosVariedad) content += `### Utilización de instrumentos de evaluación variados, diversos, accesibles y adaptados\n${block.docenteEval.instrumentosVariedad}\n\n`;
+    if (block.evaluation && block.evaluation.instruments) {
+      const detailedInstruments = block.evaluation.instruments.filter(i => i.content);
+      if (detailedInstruments.length > 0) {
+        doc.addPage();
+        currentY = 20;
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(16);
+        doc.setTextColor(30, 41, 59);
+        doc.text("ANEXOS: INSTRUMENTOS DE EVALUACIÓN", 20, currentY);
+        currentY += 15;
+
+        detailedInstruments.forEach((inv, i) => {
+          if (currentY > 240) { doc.addPage(); currentY = 20; }
+          
+          doc.setFontSize(14);
+          doc.setFont("helvetica", "bold");
+          doc.text(`${i + 1}. ${inv.name} (${inv.type || 'Instrumento'})`, 20, currentY);
+          currentY += 8;
+
+          doc.setFontSize(10);
+          doc.setTextColor(71, 85, 105);
+          doc.setFont("helvetica", "normal");
+          const descLines = doc.splitTextToSize(inv.description, 170);
+          doc.text(descLines, 20, currentY);
+          currentY += (descLines.length * 5) + 10;
+
+          if (inv.type === 'Rúbrica' && inv.content?.rows) {
+            autoTable(doc, {
+              startY: currentY,
+              head: [['CRITERIO', ...(inv.content.headers || [])]],
+              body: inv.content.rows.map((r: any) => [r.criteria, ...(r.cells || [])]),
+              theme: 'grid',
+              styles: { fontSize: 7, cellPadding: 2 },
+              headStyles: { fillColor: [71, 85, 105], textColor: 255 }
+            });
+            currentY = (doc as any).lastAutoTable.finalY + 15;
+          } else if (inv.type === 'Lista de Cotejo' && inv.content?.items) {
+            autoTable(doc, {
+              startY: currentY,
+              head: [['INDICADOR DE LOGRO', 'SÍ', 'NO', 'OBSERVACIONES']],
+              body: inv.content.items.map((it: any) => [it, '', '', '']),
+              theme: 'grid',
+              styles: { fontSize: 8 },
+              columnStyles: { 1: { cellWidth: 15 }, 2: { cellWidth: 15 } }
+            });
+            currentY = (doc as any).lastAutoTable.finalY + 15;
+          } else if (inv.type === 'Prueba Escrita' && inv.content?.questions) {
+            inv.content.questions.forEach((q: any, qIdx: number) => {
+              if (currentY > 250) { doc.addPage(); currentY = 20; }
+              doc.setFont("helvetica", "bold");
+              doc.setTextColor(30, 41, 59);
+              doc.text(`${qIdx + 1}. ${q.question}`, 20, currentY);
+              currentY += 6;
+              if (q.options) {
+                q.options.forEach((opt: string) => {
+                  doc.setFont("helvetica", "normal");
+                  doc.setTextColor(71, 85, 105);
+                  doc.text(`[ ] ${opt}`, 25, currentY);
+                  currentY += 5;
+                });
+              } else {
+                currentY += 12;
+              }
+              currentY += 5;
+            });
+            currentY += 10;
+          } else if (inv.type === 'Escala de Valoración' && inv.content?.items) {
+            autoTable(doc, {
+              startY: currentY,
+              head: [['ÍTEM', ...(inv.content.scale || [])]],
+              body: inv.content.items.map((it: any) => [it, ...(inv.content.scale || []).map(() => '')]),
+              theme: 'grid',
+              styles: { fontSize: 8 }
+            });
+            currentY = (doc as any).lastAutoTable.finalY + 15;
+          } else if (inv.type === 'Diana de Autoevaluación' && inv.content?.indicators) {
+            autoTable(doc, {
+              startY: currentY,
+              head: [['INDICADOR / ÁREA DE MEJORA', '1', '2', '3', '4', '5'].slice(0, (inv.content.levels || 4) + 1)],
+              body: inv.content.indicators.map((it: any) => [it, ...[...Array(inv.content.levels || 4)].map(() => '')]),
+              theme: 'grid',
+              styles: { fontSize: 8 },
+              headStyles: { fillColor: [71, 85, 105] }
+            });
+            currentY = (doc as any).lastAutoTable.finalY + 15;
+          }
+        });
+      }
     }
 
     if (block.diversity && block.diversity.measures && block.diversity.measures.length > 0) {
@@ -1799,6 +2189,87 @@ export default function App() {
     setIsGenerating(null);
   };
 
+  const handleExportIndividualInstrument = (inv: EvaluationInstrument) => {
+    if (!activeBlock) return;
+    try {
+      const doc = new jsPDF();
+      let currentY = 20;
+
+      // Header
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(18);
+      doc.text(inv.name, 20, currentY);
+      currentY += 10;
+
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "italic");
+      doc.text(`Tipo: ${inv.type || 'Instrumento de Evaluación'}`, 20, currentY);
+      currentY += 10;
+
+      doc.setFont("helvetica", "normal");
+      const descLines = doc.splitTextToSize(inv.description, 170);
+      doc.text(descLines, 20, currentY);
+      currentY += (descLines.length * 5) + 12;
+
+      // Content rendering
+      if (inv.type === 'Rúbrica' && inv.content?.rows) {
+        autoTable(doc, {
+          startY: currentY,
+          head: [['CRITERIO', ...(inv.content.headers || [])]],
+          body: inv.content.rows.map((r: any) => [r.criteria, ...(r.cells || [])]),
+          theme: 'grid',
+          styles: { fontSize: 8, cellPadding: 3 },
+          headStyles: { fillColor: [30, 41, 59] }
+        });
+      } else if (inv.type === 'Lista de Cotejo' && inv.content?.items) {
+        autoTable(doc, {
+          startY: currentY,
+          head: [['INDICADOR DE LOGRO', 'SÍ', 'NO', 'OBSERVACIONES']],
+          body: inv.content.items.map((it: any) => [it, '', '', '']),
+          theme: 'grid',
+          columnStyles: { 1: { cellWidth: 15 }, 2: { cellWidth: 15 } }
+        });
+      } else if (inv.type === 'Prueba Escrita' && inv.content?.questions) {
+        inv.content.questions.forEach((q: any, qIdx: number) => {
+          if (currentY > 260) { doc.addPage(); currentY = 20; }
+          doc.setFont("helvetica", "bold");
+          doc.text(`${qIdx + 1}. ${q.question}`, 20, currentY);
+          currentY += 8;
+          if (q.options) {
+            q.options.forEach((opt: string) => {
+              doc.setFont("helvetica", "normal");
+              doc.text(`[ ] ${opt}`, 25, currentY);
+              currentY += 6;
+            });
+          } else {
+            currentY += 15;
+          }
+          currentY += 5;
+        });
+      } else if (inv.type === 'Escala de Valoración' && inv.content?.items) {
+        autoTable(doc, {
+          startY: currentY,
+          head: [['ÍTEM', ...(inv.content.scale || [])]],
+          body: inv.content.items.map((it: any) => [it, ...(inv.content.scale || []).map(() => '')]),
+          theme: 'grid'
+        });
+      } else if (inv.type === 'Diana de Autoevaluación' && inv.content?.indicators) {
+        autoTable(doc, {
+          startY: currentY,
+          head: [['INDICADOR / ÁREA', '1', '2', '3', '4', '5'].slice(0, (inv.content.levels || 4) + 1)],
+          body: inv.content.indicators.map((it: any) => [it, ...[...Array(inv.content.levels || 4)].map(() => '')]),
+          theme: 'grid',
+          headStyles: { fillColor: [225, 29, 72] }
+        });
+      }
+
+      doc.save(`${inv.name.replace(/\s+/g, '_')}.pdf`);
+    } catch (error) {
+      console.error("Error exporting instrument:", error);
+      alert("Error al generar el PDF del instrumento.");
+    }
+  };
+
   const handleGenerateEvaluationAction = async () => {
     if (!activeBlock || !activeBlock.activities || !activeBlock.plan) return;
     setIsAnalyzing(true);
@@ -1833,13 +2304,54 @@ export default function App() {
         ...editingInstrument,
         name: result.name,
         description: result.description,
-        canvaPrompt: result.canvaPrompt
+        canvaPrompt: result.canvaPrompt,
+        type: result.type as any,
+        content: result.content
       });
     } catch (e) {
       console.error(e);
       alert("Hubo un error al mejorar el instrumento con IA.");
     } finally {
       setIsImprovingInstrument(false);
+    }
+  };
+
+  const handleGenerateRealInstrument = async (instrument: EvaluationInstrument) => {
+    if (!activeBlock || !activeBlock.plan) return;
+    setIsGenerating(instrument.id);
+    try {
+      const result = await improveInstrument(
+        instrument.name,
+        instrument.description,
+        activeBlock.activities?.filter((_, i) => instrument.linkedActivitiesIds.includes(i.toString())).map(a => ({ title: a.title, description: a.description })) || [],
+        activeBlock.plan.suggestedContent
+      );
+      
+      const newInstrument = {
+        ...instrument,
+        name: result.name,
+        description: result.description,
+        canvaPrompt: result.canvaPrompt,
+        type: result.type as any,
+        content: result.content
+      };
+
+      const instruments = [...(activeBlock.evaluation?.instruments || [])];
+      const index = instruments.findIndex(i => i.id === instrument.id);
+      if (index >= 0) {
+        instruments[index] = newInstrument;
+        updateBlock(activeBlock.id, { 
+          evaluation: { 
+            ...(activeBlock.evaluation || { instruments: [] }), 
+            instruments 
+          } 
+        });
+      }
+    } catch (e) {
+      console.error(e);
+      alert("Hubo un error al generar el instrumento con IA.");
+    } finally {
+      setIsGenerating(null);
     }
   };
 
@@ -1971,7 +2483,8 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-background text-[#1A1A1A] font-sans flex flex-col h-screen overflow-hidden">
+    <APIProvider apiKey={GOOGLE_MAPS_API_KEY} version="weekly">
+      <div className="min-h-screen bg-background text-[#1A1A1A] font-sans flex flex-col h-screen overflow-hidden">
       {/* Mobile Header / Top Bar */}
       <header className="flex items-center justify-between px-4 py-3 bg-white border-b border-gray-100 z-50 md:hidden">
         <button 
@@ -2946,16 +3459,17 @@ export default function App() {
                 </div>
               ) : (
                 <div className="space-y-8">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {activeBlock.evaluation.instruments.map((inv, idx) => (
                       <motion.div
                         key={inv.id}
-                        initial={{ opacity: 0, scale: 0.95 }}
-                        animate={{ opacity: 1, scale: 1 }}
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: idx * 0.1 }}
-                        onClick={() => setEditingInstrument(inv)}
-                        className="bg-white rounded-3xl border border-gray-100 p-6 shadow-xl shadow-gray-200/30 flex flex-col gap-4 group cursor-pointer hover:border-primary/20 transition-all relative"
+                        className="bg-white rounded-[2.5rem] border border-gray-100 p-8 shadow-xl shadow-gray-200/40 flex flex-col gap-6 group hover:shadow-2xl hover:shadow-primary/5 transition-all relative overflow-hidden"
                       >
+                         <div className="absolute top-0 left-0 w-1 h-full bg-accent opacity-20 group-hover:opacity-100 transition-opacity" />
+                         
                          <button 
                              onClick={(e) => {
                                e.stopPropagation();
@@ -2964,37 +3478,76 @@ export default function App() {
                              }}
                              className="absolute top-4 right-4 p-2 text-gray-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100 z-10"
                           >
-                            <X className="w-4 h-4" />
+                             <Trash2 className="w-5 h-5" />
                           </button>
 
-                        <div className="space-y-1">
-                          <h3 className="font-bold text-lg text-primary">{inv.name}</h3>
-                          <div className="flex gap-1 flex-wrap">
-                            {inv.linkedActivitiesIds.map(actIdx => (
-                              <span key={actIdx} className="text-[8px] font-bold bg-primary/5 text-primary/60 px-1.5 py-0.5 rounded uppercase">
-                                Act. {Number(actIdx) + 1}
+                        <div className="space-y-4">
+                          <div className="flex gap-2 flex-wrap">
+                            <span className={`px-2.5 py-1 rounded-full text-[9px] font-bold uppercase tracking-wider ${
+                              inv.type === 'Rúbrica' ? 'bg-indigo-50 text-indigo-600' :
+                              inv.type === 'Lista de Cotejo' ? 'bg-orange-50 text-orange-600' :
+                              inv.type === 'Prueba Escrita' ? 'bg-violet-50 text-violet-600' :
+                              inv.type === 'Escala de Valoración' ? 'bg-blue-50 text-blue-600' :
+                              inv.type === 'Diana de Autoevaluación' ? 'bg-rose-50 text-rose-600' :
+                              'bg-gray-100 text-gray-500'
+                            }`}>
+                              {inv.type || 'Instrumento'}
+                            </span>
+                            {inv.content && (
+                              <span className="px-2.5 py-1 bg-green-50 text-green-600 rounded-full text-[9px] font-bold uppercase tracking-wider flex items-center gap-1">
+                                <CheckCircle2 className="w-2.5 h-2.5" /> Estructura Generada
                               </span>
-                            ))}
+                            )}
                           </div>
+                          
+                          <h3 className="font-bold text-xl text-primary leading-tight group-hover:text-accent transition-colors">{inv.name}</h3>
+                          
+                          <p className="text-xs text-gray-500 leading-relaxed line-clamp-3 italic">
+                            {inv.description}
+                          </p>
                         </div>
-                        
-                        <p className="text-sm text-gray-600 leading-relaxed line-clamp-3">
-                          {inv.description}
-                        </p>
 
-                        <div className="mt-auto pt-4 flex items-center justify-between">
-                           <span className="text-[10px] font-bold text-primary/40 uppercase tracking-widest flex items-center gap-1">
-                             <PenTool className="w-3 h-3" /> Editar detalles
-                           </span>
-                           {inv.canvaPrompt && (
-                             <div className="flex items-center gap-2">
-                               <Sparkles className="w-3 h-3 text-accent" />
-                             </div>
+                        <div className="mt-auto pt-6 flex items-center justify-between border-t border-gray-50">
+                           <div className="flex items-center gap-2">
+                             <button 
+                               onClick={() => setEditingInstrument(inv)}
+                               className="p-3 bg-gray-50 text-gray-400 hover:text-accent hover:bg-accent/5 rounded-2xl transition-all"
+                               title="Configurar y Editar"
+                             >
+                               <Settings2 className="w-5 h-5" />
+                             </button>
+                             {inv.content && (
+                               <button 
+                                 onClick={() => handleExportIndividualInstrument(inv)}
+                                 className="p-3 bg-gray-50 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-2xl transition-all"
+                                 title="Descargar PDF"
+                               >
+                                 <Download className="w-5 h-5" />
+                               </button>
+                             )}
+                           </div>
+                           
+                           {inv.content ? (
+                             <button 
+                               onClick={() => setEditingInstrument(inv)}
+                               className="px-5 py-2.5 bg-primary text-white rounded-2xl text-[10px] font-bold uppercase tracking-widest hover:bg-accent transition-all flex items-center gap-2 shadow-lg shadow-primary/10"
+                             >
+                               <Eye className="w-4 h-4" /> Visualizar
+                             </button>
+                           ) : (
+                             <button 
+                               onClick={() => handleGenerateRealInstrument(inv)}
+                               disabled={isGenerating === inv.id}
+                               className="px-5 py-2.5 bg-accent text-white rounded-2xl text-[10px] font-bold uppercase tracking-widest hover:scale-105 transition-all flex items-center gap-2 shadow-lg shadow-accent/20 disabled:opacity-50"
+                             >
+                               {isGenerating === inv.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                               Generar Real
+                             </button>
                            )}
                         </div>
                       </motion.div>
                     ))}
-                    
+
                     <button
                       onClick={() => {
                         setEditingInstrument({
@@ -3025,44 +3578,152 @@ export default function App() {
           ) : activeBlock.step === 'docente_eval' ? (
             <div className="max-w-4xl mx-auto space-y-12 py-8 pb-32">
               <div className="space-y-4">
-                <div className="flex items-center gap-4">
-                  <button 
-                    onClick={() => updateBlock(activeBlock.id, { step: 'evaluation' })}
-                    className="p-2 hover:bg-gray-100 rounded-full text-gray-400"
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <button 
+                      onClick={() => updateBlock(activeBlock.id, { step: 'evaluation' })}
+                      className="p-2 hover:bg-gray-100 rounded-full text-gray-400"
+                    >
+                      <ChevronLeft className="w-6 h-6" />
+                    </button>
+                    <h2 className="text-4xl font-bold serif text-primary">Evaluación de la Práctica Docente</h2>
+                  </div>
+                  <button
+                    onClick={async () => {
+                      setIsGenerating('reflection');
+                      const unitTitle = activeBlock.title || 'Esta Situación de Aprendizaje';
+                      const activities = activeBlock.activities || [];
+                      const content = activeBlock.suggestedContent || '';
+                      const categories = [
+                        { id: 'materiaResults', label: 'Resultados de la materia' },
+                        { id: 'metodosPedagogicos', label: 'Métodos didácticos' },
+                        { id: 'materialesRecursos', label: 'Materiales y Recursos' },
+                        { id: 'eficaciaDiversidad', label: 'Atención a la diversidad' },
+                        { id: 'instrumentosVariedad', label: 'Instrumentos de evaluación' }
+                      ];
+                      
+                      const questions = await generateDocenteReflection(unitTitle, activities, content, categories);
+                      updateBlock(activeBlock.id, { 
+                        docenteEval: { 
+                          ...(activeBlock.docenteEval || {}), 
+                          reflectionQuestions: questions 
+                        } 
+                      });
+                      setIsGenerating(null);
+                    }}
+                    disabled={isGenerating === 'reflection'}
+                    className="flex items-center gap-2 px-6 py-3 bg-accent text-white rounded-2xl font-bold uppercase tracking-widest text-[10px] shadow-lg shadow-accent/20 hover:scale-105 transition-all disabled:opacity-50"
                   >
-                    <ChevronLeft className="w-6 h-6" />
+                    {isGenerating === 'reflection' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                    <span>Generar Reflexión Guiada con IA</span>
                   </button>
-                  <h2 className="text-4xl font-bold serif text-primary">Evaluación de la Práctica Docente</h2>
                 </div>
-                <p className="text-gray-500 text-lg">Indicadores de reflexión sobre el proceso de enseñanza y aprendizaje.</p>
+                <p className="text-gray-500 text-lg italic">Organiza tu pensamiento y mejora tu práctica analizando lo sucedido en el aula.</p>
               </div>
 
-              <div className="bg-white rounded-[2.5rem] p-10 space-y-10 border border-gray-100 shadow-xl shadow-gray-200/50">
+              <div className="bg-white rounded-[2.5rem] p-10 space-y-8 border border-gray-100 shadow-xl shadow-gray-200/50">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {[
-                  { field: 'materiaResults', label: 'Resultados de la evaluación de la materia', placeholder: 'Reflexiona sobre el grado de consecución de los objetivos...' },
-                  { field: 'metodosPedagogicos', label: 'Métodos didácticos y Pedagógicos', placeholder: '¿Han sido efectivos los métodos empleados? ¿Se ha fomentado la participación?' },
-                  { field: 'materialesRecursos', label: 'Adecuación de los materiales y recursos didácticos', placeholder: '¿Los materiales han facilitado el aprendizaje? ¿Eran accesibles?' },
-                  { field: 'eficaciaDiversidad', label: 'Eficacia de las medidas de atención a la diversidad', placeholder: '¿Se han atendido correctamente las diferencias individuales?' },
-                  { field: 'instrumentosVariedad', label: 'Variedad y accesibilidad de los instrumentos de evaluación', placeholder: '¿Se han usado instrumentos diversos y adaptados?' }
-                ].map((item, idx) => (
-                  <div key={item.field} className="space-y-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 bg-primary/5 rounded-xl flex items-center justify-center text-primary text-xs font-bold">
-                        {idx + 1}
-                      </div>
-                      <h3 className="font-bold text-gray-700 text-sm">{item.label}</h3>
-                    </div>
-                    <textarea 
-                      placeholder={item.placeholder}
-                      value={(activeBlock.docenteEval as any)?.[item.field] || ''}
-                      onChange={(e) => {
+                  { field: 'materiaResults', label: 'Resultados de la materia', icon: <Target className="w-5 h-5" /> },
+                  { field: 'metodosPedagogicos', label: 'Métodos didácticos', icon: <BookOpen className="w-5 h-5" /> },
+                  { field: 'materialesRecursos', label: 'Materiales y Recursos', icon: <Package className="w-5 h-5" /> },
+                  { field: 'eficaciaDiversidad', label: 'Atención a la diversidad', icon: <Users2 className="w-5 h-5" /> },
+                  { field: 'instrumentosVariedad', label: 'Instrumentos de evaluación', icon: <ClipboardCheck className="w-5 h-5" /> }
+                ].map((item, idx) => {
+                  const isSelected = activeBlock.docenteEval?.selectedCategories?.includes(item.field) ?? false;
+                  
+                  return (
+                    <button 
+                      key={item.field}
+                      onClick={() => {
                         const current = activeBlock.docenteEval || {};
-                        updateBlock(activeBlock.id, { docenteEval: { ...current, [item.field]: e.target.value } });
+                        const categories = current.selectedCategories || [];
+                        const newCategories = isSelected 
+                          ? categories.filter(c => c !== item.field)
+                          : [...categories, item.field];
+                        updateBlock(activeBlock.id, { docenteEval: { ...current, selectedCategories: newCategories } });
                       }}
-                      className="w-full h-32 p-6 bg-gray-50 rounded-2xl border-none focus:ring-2 focus:ring-primary/10 text-sm leading-relaxed outline-none transition-all"
-                    />
-                  </div>
-                ))}
+                      className={`p-6 rounded-3xl border-2 transition-all text-left flex flex-col gap-4 group ${
+                        isSelected 
+                        ? 'border-accent bg-accent/5 ring-4 ring-accent/5' 
+                        : 'border-gray-100 bg-gray-50 hover:border-gray-200 opacity-60 hover:opacity-100'
+                      }`}
+                    >
+                      <div className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all ${
+                        isSelected ? 'bg-accent text-white shadow-lg shadow-accent/20' : 'bg-white text-gray-400 group-hover:text-primary'
+                      }`}>
+                        {item.icon}
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Área {idx + 1}</p>
+                        <h3 className={`font-bold text-sm leading-tight ${isSelected ? 'text-primary' : 'text-gray-600'}`}>{item.label}</h3>
+                      </div>
+                    </button>
+                  );
+                })}
+                </div>
+
+                <div className="pt-8 space-y-6">
+                  {activeBlock.docenteEval?.selectedCategories && activeBlock.docenteEval.selectedCategories.length > 0 ? (
+                    <div className="space-y-6">
+                      <div className="flex items-center gap-3 px-2">
+                        <Lightbulb className="w-5 h-5 text-accent" />
+                        <h3 className="font-bold text-primary italic uppercase tracking-wider text-xs">Guía de Reflexión Personalizada</h3>
+                      </div>
+                      
+                      <div className="grid grid-cols-1 gap-6">
+                        {activeBlock.docenteEval.selectedCategories.map(catId => {
+                          const label = [
+                            { id: 'materiaResults', label: 'Resultados de la materia' },
+                            { id: 'metodosPedagogicos', label: 'Métodos didácticos' },
+                            { id: 'materialesRecursos', label: 'Materiales y Recursos' },
+                            { id: 'eficaciaDiversidad', label: 'Atención a la diversidad' },
+                            { id: 'instrumentosVariedad', label: 'Instrumentos de evaluación' }
+                          ].find(c => c.id === catId)?.label;
+
+                          return (
+                            <motion.div 
+                              initial={{ opacity: 0, y: 10 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              key={catId} 
+                              className="p-8 bg-gray-50 rounded-[2rem] border border-gray-100 space-y-4"
+                            >
+                              <h4 className="font-bold text-primary text-sm flex items-center gap-2">
+                                <span className="w-1.5 h-1.5 rounded-full bg-accent"></span>
+                                {label}
+                              </h4>
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                {activeBlock.docenteEval?.reflectionQuestions?.[catId] ? (
+                                  activeBlock.docenteEval.reflectionQuestions[catId].map((q, qIdx) => (
+                                    <div key={qIdx} className="p-4 bg-white rounded-2xl border border-gray-100 shadow-sm">
+                                      <p className="text-xs text-gray-600 leading-relaxed italic">"{q}"</p>
+                                    </div>
+                                  ))
+                                ) : (
+                                  <div className="col-span-full p-4 bg-accent/5 rounded-2xl border border-dashed border-accent/20 text-center">
+                                    <p className="text-xs text-accent font-medium italic">
+                                      Haz clic en "Generar Reflexión Guiada" para obtener preguntas personalizadas para esta área.
+                                    </p>
+                                  </div>
+                                )}
+                              </div>
+                            </motion.div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-12 bg-gray-50 rounded-[2.5rem] border-2 border-dashed border-gray-200 text-center space-y-4">
+                      <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center mx-auto text-gray-300 shadow-sm">
+                        <Info className="w-8 h-8" />
+                      </div>
+                      <div className="max-w-xs mx-auto">
+                        <p className="text-sm font-bold text-gray-600">Selecciona algún área de evaluación</p>
+                        <p className="text-xs text-gray-400 mt-1">Elige los aspectos sobre los que quieres reflexionar para que podamos proponerte preguntas guiadas.</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
               
               <div className="flex flex-col md:flex-row items-center justify-center gap-4 pt-12">
@@ -3271,7 +3932,15 @@ export default function App() {
                       </div>
                       <div>
                         <h1 className="text-3xl font-bold text-primary">Grupo: {group.course} {group.letter}</h1>
-                        <p className="text-gray-500 font-medium">{group.school}</p>
+                        <div className="flex flex-col">
+                          <p className="text-gray-500 font-medium">{group.school}</p>
+                          {(group.municipality || group.province) && (
+                            <p className="text-[11px] text-gray-400 flex items-center gap-1 mt-0.5">
+                              <MapPin className="w-3 h-3 text-accent" />
+                              {group.municipality}{group.municipality && group.province ? ', ' : ''}{group.province}
+                            </p>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </motion.header>
@@ -3692,7 +4361,214 @@ export default function App() {
               </button>
             </div>
 
-            <div className="space-y-6 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
+            <div className="space-y-6 max-h-[70vh] overflow-y-auto pr-2 custom-scrollbar">
+              {!editingInstrument.content && (
+                <div className="bg-accent/5 rounded-3xl p-10 border border-dashed border-accent/20 text-center space-y-4">
+                  <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center mx-auto text-accent shadow-lg shadow-accent/5">
+                    <Sparkles className="w-10 h-10" />
+                  </div>
+                  <div className="max-w-xs mx-auto space-y-2">
+                    <h4 className="text-lg font-bold text-primary">Generar Estructura Maestra</h4>
+                    <p className="text-xs text-gray-500 leading-relaxed">¿Deseas que la IA cree la rúbrica completa o el examen basado en los contenidos y actividades seleccionados?</p>
+                  </div>
+                  <button 
+                    onClick={handleImproveInstrument}
+                    disabled={isImprovingInstrument || !editingInstrument.name || !editingInstrument.description}
+                    className="px-10 py-4 bg-accent text-white rounded-2xl font-bold uppercase tracking-widest text-[11px] shadow-xl shadow-accent/20 hover:scale-105 active:scale-95 transition-all flex items-center gap-3 mx-auto"
+                  >
+                    {isImprovingInstrument ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />}
+                    Diseñar ahora con IA
+                  </button>
+                </div>
+              )}
+
+              {editingInstrument.content && (
+                <div className="bg-white rounded-[2rem] border border-gray-100 p-8 space-y-6 shadow-sm">
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-1">
+                      <p className="text-[10px] font-bold text-accent uppercase tracking-widest flex items-center gap-2">
+                         <Layout className="w-3 h-3" /> Previsualización interactiva
+                      </p>
+                      <h4 className="text-xl font-bold text-primary">{editingInstrument.name}</h4>
+                    </div>
+                    <div className="flex items-center gap-2">
+                       <button 
+                        onClick={handleImproveInstrument}
+                        disabled={isImprovingInstrument}
+                        className="p-2.5 bg-gray-50 text-gray-400 hover:text-accent hover:bg-accent/5 rounded-xl transition-all"
+                        title="Regenerar con IA"
+                      >
+                        {isImprovingInstrument ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCcw className="w-4 h-4" />}
+                      </button>
+                      <button 
+                        onClick={() => handleExportIndividualInstrument(editingInstrument)}
+                        className="flex items-center gap-2 px-5 py-2.5 bg-accent text-white rounded-xl text-[10px] font-bold uppercase tracking-widest hover:scale-105 transition-all shadow-lg shadow-accent/10"
+                      >
+                        <Download className="w-3.5 h-3.5" /> Descargar PDF
+                      </button>
+                    </div>
+                  </div>
+                  
+                  <div className="p-1 bg-gray-50/50 rounded-2xl">
+                    {editingInstrument.type === 'Rúbrica' && editingInstrument.content.rows && (
+                      <div className="overflow-hidden border border-gray-100 rounded-xl shadow-sm">
+                        <table className="w-full text-left border-collapse bg-white">
+                          <thead>
+                            <tr className="bg-gray-50 border-b border-gray-100">
+                              <th className="p-4 text-[10px] font-bold text-primary uppercase tracking-wider">Criterio</th>
+                              {(editingInstrument.content.headers || []).map((h: string) => (
+                                <th key={h} className="p-4 text-[10px] font-bold text-primary uppercase tracking-wider text-center border-l border-gray-50">{h}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-50">
+                            {editingInstrument.content.rows.map((row: any, rIdx: number) => (
+                              <tr key={rIdx} className="hover:bg-gray-50/30 transition-colors">
+                                <td className="p-4 text-[9px] font-bold text-gray-700 bg-gray-50/20">{row.criteria}</td>
+                                {row.cells.map((cell: string, cIdx: number) => (
+                                  <td key={cIdx} className="p-4 text-[8px] text-gray-500 leading-relaxed border-l border-gray-50 text-center italic">{cell}</td>
+                                ))}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+
+                    {editingInstrument.type === 'Lista de Cotejo' && editingInstrument.content.items && (
+                      <div className="space-y-2 p-2">
+                        {editingInstrument.content.items.map((item: string, iIdx: number) => (
+                          <div key={iIdx} className="flex items-center gap-4 p-4 bg-white rounded-2xl border border-gray-50 shadow-sm">
+                            <div className="w-5 h-5 border-2 border-gray-100 rounded-lg flex-shrink-0" />
+                            <span className="text-[11px] text-gray-600 font-medium">{item}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {editingInstrument.type === 'Prueba Escrita' && editingInstrument.content.questions && (
+                      <div className="space-y-4 p-2">
+                        {editingInstrument.content.questions.map((q: any, qIdx: number) => (
+                          <div key={qIdx} className="p-5 bg-white rounded-2xl border border-gray-100 shadow-sm space-y-4">
+                            <p className="text-[11px] font-bold text-primary flex gap-2">
+                              <span className="text-accent">{qIdx + 1}.</span> {q.question}
+                            </p>
+                            {q.options && (
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pl-6">
+                                {q.options.map((opt: string, oIdx: number) => (
+                                  <div key={oIdx} className="flex items-center gap-3 text-[10px] text-gray-500 bg-gray-50/50 p-2 rounded-xl border border-transparent hover:border-accent/10 transition-all">
+                                    <div className="w-4 h-4 border border-gray-200 rounded-full flex-shrink-0 flex items-center justify-center text-[8px] font-bold">
+                                      {String.fromCharCode(65 + oIdx)}
+                                    </div>
+                                    {opt}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {editingInstrument.type === 'Escala de Valoración' && editingInstrument.content.items && (
+                      <div className="space-y-3 p-2">
+                        <div className="flex justify-end gap-2 px-4 mb-2">
+                          {(editingInstrument.content.scale || []).map((s: string) => (
+                            <div key={s} className="w-12 text-center text-[8px] font-bold text-gray-400 uppercase tracking-widest">{s}</div>
+                          ))}
+                        </div>
+                        {editingInstrument.content.items.map((it: string, iIdx: number) => (
+                          <div key={iIdx} className="flex items-center gap-4 p-4 bg-white rounded-2xl border border-gray-50 shadow-sm">
+                            <span className="flex-1 text-[11px] text-gray-600 font-medium">{it}</span>
+                            <div className="flex gap-2">
+                              {(editingInstrument.content.scale || []).map((_: any, sIdx: number) => (
+                                <div key={sIdx} className="w-12 h-6 border-2 border-gray-100 rounded-lg bg-gray-50/30" />
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {editingInstrument.type === 'Diana de Autoevaluación' && editingInstrument.content.indicators && (
+                      <div className="flex flex-col items-center justify-center p-8 space-y-10 bg-white rounded-3xl border border-gray-100 shadow-sm mt-4 min-h-[400px]">
+                        <div className="relative w-80 h-80">
+                          <svg viewBox="0 0 100 100" className="w-full h-full overflow-visible">
+                            {/* Concentric Circles */}
+                            {[...Array(editingInstrument.content.levels || 4)].map((_, i, arr) => (
+                              <circle
+                                key={i}
+                                cx="50"
+                                cy="50"
+                                r={(40 / arr.length) * (i + 1)}
+                                fill="none"
+                                stroke="#e2e8f0"
+                                strokeWidth="0.5"
+                                strokeDasharray={i === arr.length - 1 ? "" : "2,2"}
+                              />
+                            ))}
+                            {/* Radial Lines */}
+                            {editingInstrument.content.indicators.map((_: any, i: number, arr: any[]) => {
+                              const angle = (i * 360) / arr.length - 90;
+                              const x2 = 50 + 40 * Math.cos((angle * Math.PI) / 180);
+                              const y2 = 50 + 40 * Math.sin((angle * Math.PI) / 180);
+                              return (
+                                <line
+                                  key={i}
+                                  x1="50"
+                                  y1="50"
+                                  x2={x2}
+                                  y2={y2}
+                                  stroke="#e2e8f0"
+                                  strokeWidth="0.5"
+                                />
+                              );
+                            })}
+                            
+                            {/* Target points for visualization (empty) */}
+                            <circle cx="50" cy="50" r="1.5" fill="#e11d48" className="animate-pulse" />
+
+                            {/* Labels on SVG */}
+                            {editingInstrument.content.indicators.map((text: string, i: number, arr: any[]) => {
+                              const angle = (i * 360) / arr.length - 90;
+                              const x = 50 + 50 * Math.cos((angle * Math.PI) / 180);
+                              const y = 50 + 50 * Math.sin((angle * Math.PI) / 180);
+                              
+                              // Simplified text for the chart area
+                              const label = text.length > 15 ? text.substring(0, 12) + '...' : text;
+                              
+                              return (
+                                <g key={i}>
+                                  <text
+                                    x={x}
+                                    y={y}
+                                    textAnchor="middle"
+                                    dominantBaseline="middle"
+                                    className="text-[3px] font-bold fill-gray-400 uppercase"
+                                    style={{ fontSize: '3px' }}
+                                  >
+                                    {label}
+                                  </text>
+                                </g>
+                              );
+                            })}
+                          </svg>
+                        </div>
+                        
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full pt-8 border-t border-gray-100">
+                          {editingInstrument.content.indicators.map((text: string, i: number) => (
+                            <div key={i} className="flex items-start gap-3 p-3 rounded-xl bg-gray-50/50 border border-transparent hover:border-gray-100 transition-all">
+                              <span className="flex-shrink-0 w-6 h-6 flex items-center justify-center bg-white rounded-lg shadow-sm text-[10px] font-bold text-accent border border-gray-100">{i + 1}</span>
+                              <span className="text-[11px] text-gray-600 font-medium leading-relaxed">{text}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
               <div className="space-y-2">
                 <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Nombre del Instrumento</label>
                 <input 
@@ -3705,16 +4581,27 @@ export default function App() {
               </div>
 
               <div className="space-y-2">
+                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Tipo de Instrumento</label>
+                <div className="relative">
+                  <select 
+                    value={editingInstrument.type || 'Otro'}
+                    onChange={(e) => setEditingInstrument({...editingInstrument, type: e.target.value as any})}
+                    className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 focus:ring-2 focus:ring-primary/10 focus:bg-white focus:border-primary/20 transition-all font-bold text-primary outline-none appearance-none"
+                  >
+                    <option value="Rúbrica">Rúbrica</option>
+                    <option value="Lista de Cotejo">Lista de Cotejo</option>
+                    <option value="Prueba Escrita">Prueba Escrita</option>
+                    <option value="Escala de Valoración">Escala de Valoración</option>
+                    <option value="Diana de Autoevaluación">Diana de Autoevaluación</option>
+                    <option value="Otro">Otro</option>
+                  </select>
+                  <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
+                </div>
+              </div>
+
+              <div className="space-y-2">
                 <div className="flex items-center justify-between truncate pr-1">
                   <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Descripción y Forma de Evaluación</label>
-                  <button 
-                    onClick={handleImproveInstrument}
-                    disabled={isImprovingInstrument || !editingInstrument.name || !editingInstrument.description}
-                    className="flex items-center gap-1.5 text-[10px] font-bold text-accent uppercase tracking-widest hover:text-accent/80 disabled:opacity-30 disabled:cursor-not-allowed group transition-all"
-                  >
-                    {isImprovingInstrument ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3 group-hover:scale-110" />}
-                    Formatear y Mejorar con IA
-                  </button>
                 </div>
                 <AutoResizeTextArea 
                   placeholder="Indica qué se evalúa, los criterios implicados y cómo vas a calificar..."
@@ -3791,6 +4678,7 @@ export default function App() {
         existingSchools={Array.from(new Set(studentGroups.map(g => g.school)))}
         editingGroup={editingGroupId ? studentGroups.find(g => g.id === editingGroupId) : null}
       />
-    </div>
+      </div>
+    </APIProvider>
   );
 }

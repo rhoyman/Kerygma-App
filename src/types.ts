@@ -33,6 +33,8 @@ export interface EvaluationInstrument {
   name: string;
   description: string;
   linkedActivitiesIds: string[];
+  type?: 'Rúbrica' | 'Lista de Cotejo' | 'Prueba Escrita' | 'Escala de Valoración' | 'Diana de Autoevaluación' | 'Otro';
+  content?: any; 
   canvaPrompt?: string; 
 }
 
@@ -60,6 +62,8 @@ export interface DocenteEvalSection {
   materialesRecursos?: string;
   eficaciaDiversidad?: string;
   instrumentosVariedad?: string;
+  selectedCategories?: string[];
+  reflectionQuestions?: { [key: string]: string[] };
 }
 
 export interface StudentGroup {
@@ -71,6 +75,10 @@ export interface StudentGroup {
   stage?: 'Infantil' | 'Primaria' | 'Secundaria' | 'Bachillerato';
   studentDescription: string;
   needsDescription: string;
+  municipality?: string;
+  province?: string;
+  address?: string;
+  placeId?: string;
 }
 
 export interface CurriculumBlock {

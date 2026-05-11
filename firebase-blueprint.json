@@ -33,7 +33,12 @@
         "school": { "type": "string" },
         "studentDescription": { "type": "string" },
         "needsDescription": { "type": "string" },
-        "userId": { "type": "string" }
+        "userId": { "type": "string" },
+        "stage": { "type": "string" },
+        "municipality": { "type": "string" },
+        "province": { "type": "string" },
+        "address": { "type": "string" },
+        "placeId": { "type": "string" }
       },
       "required": ["course", "letter", "school", "userId"]
     }
