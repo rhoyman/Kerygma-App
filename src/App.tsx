@@ -105,7 +105,8 @@ import {
   improveInstrument,
   generateDiversityMeasures,
   generateDocenteReflection,
-  isAIConfigured
+  isAIConfigured,
+  getInstrumentManualPrompt
 } from './services/geminiService';
 import { useAuth } from './lib/AuthContext';
 import { db } from './lib/firebase';
@@ -1167,96 +1168,6 @@ export default function App() {
       }
     }
 
-    if (block.evaluation && block.evaluation.instruments) {
-      const detailedInstruments = block.evaluation.instruments.filter(i => i.content);
-      if (detailedInstruments.length > 0) {
-        doc.addPage();
-        currentY = 20;
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(16);
-        doc.setTextColor(30, 41, 59);
-        doc.text("ANEXOS: INSTRUMENTOS DE EVALUACIÓN", 20, currentY);
-        currentY += 15;
-
-        detailedInstruments.forEach((inv, i) => {
-          if (currentY > 240) { doc.addPage(); currentY = 20; }
-          
-          doc.setFontSize(14);
-          doc.setFont("helvetica", "bold");
-          doc.text(`${i + 1}. ${inv.name} (${inv.type || 'Instrumento'})`, 20, currentY);
-          currentY += 8;
-
-          doc.setFontSize(10);
-          doc.setTextColor(71, 85, 105);
-          doc.setFont("helvetica", "normal");
-          const descLines = doc.splitTextToSize(inv.description, 170);
-          doc.text(descLines, 20, currentY);
-          currentY += (descLines.length * 5) + 10;
-
-          if (inv.type === 'Rúbrica' && inv.content?.rows) {
-            autoTable(doc, {
-              startY: currentY,
-              head: [['CRITERIO', ...(inv.content.headers || [])]],
-              body: inv.content.rows.map((r: any) => [r.criteria, ...(r.cells || [])]),
-              theme: 'grid',
-              styles: { fontSize: 7, cellPadding: 2 },
-              headStyles: { fillColor: [71, 85, 105], textColor: 255 }
-            });
-            currentY = (doc as any).lastAutoTable.finalY + 15;
-          } else if (inv.type === 'Lista de Cotejo' && inv.content?.items) {
-            autoTable(doc, {
-              startY: currentY,
-              head: [['INDICADOR DE LOGRO', 'SÍ', 'NO', 'OBSERVACIONES']],
-              body: inv.content.items.map((it: any) => [it, '', '', '']),
-              theme: 'grid',
-              styles: { fontSize: 8 },
-              columnStyles: { 1: { cellWidth: 15 }, 2: { cellWidth: 15 } }
-            });
-            currentY = (doc as any).lastAutoTable.finalY + 15;
-          } else if (inv.type === 'Prueba Escrita' && inv.content?.questions) {
-            inv.content.questions.forEach((q: any, qIdx: number) => {
-              if (currentY > 250) { doc.addPage(); currentY = 20; }
-              doc.setFont("helvetica", "bold");
-              doc.setTextColor(30, 41, 59);
-              doc.text(`${qIdx + 1}. ${q.question}`, 20, currentY);
-              currentY += 6;
-              if (q.options) {
-                q.options.forEach((opt: string) => {
-                  doc.setFont("helvetica", "normal");
-                  doc.setTextColor(71, 85, 105);
-                  doc.text(`[ ] ${opt}`, 25, currentY);
-                  currentY += 5;
-                });
-              } else {
-                currentY += 12;
-              }
-              currentY += 5;
-            });
-            currentY += 10;
-          } else if (inv.type === 'Escala de Valoración' && inv.content?.items) {
-            autoTable(doc, {
-              startY: currentY,
-              head: [['ÍTEM', ...(inv.content.scale || [])]],
-              body: inv.content.items.map((it: any) => [it, ...(inv.content.scale || []).map(() => '')]),
-              theme: 'grid',
-              styles: { fontSize: 8 }
-            });
-            currentY = (doc as any).lastAutoTable.finalY + 15;
-          } else if (inv.type === 'Diana de Autoevaluación' && inv.content?.indicators) {
-            autoTable(doc, {
-              startY: currentY,
-              head: [['INDICADOR / ÁREA DE MEJORA', '1', '2', '3', '4', '5'].slice(0, (inv.content.levels || 4) + 1)],
-              body: inv.content.indicators.map((it: any) => [it, ...[...Array(inv.content.levels || 4)].map(() => '')]),
-              theme: 'grid',
-              styles: { fontSize: 8 },
-              headStyles: { fillColor: [71, 85, 105] }
-            });
-            currentY = (doc as any).lastAutoTable.finalY + 15;
-          }
-        });
-      }
-    }
-
     if (block.diversity && block.diversity.measures && block.diversity.measures.length > 0) {
       content += `## Adaptaciones al Grupo y Medidas de Atención a la Diversidad\n\n`;
       block.diversity.measures.forEach(m => {
@@ -2290,6 +2201,15 @@ export default function App() {
     setIsAnalyzing(false);
   };
 
+  const renderVal = (val: any) => {
+    if (typeof val === 'string' || typeof val === 'number') return val;
+    if (val === null || val === undefined) return '';
+    if (typeof val === 'object') {
+      return val.label || val.description || val.criteria || val.text || val.question || JSON.stringify(val);
+    }
+    return String(val);
+  };
+
   const handleImproveInstrument = async () => {
     if (!editingInstrument || !activeBlock || !activeBlock.plan) return;
     setIsImprovingInstrument(true);
@@ -2300,20 +2220,55 @@ export default function App() {
         activeBlock.activities?.filter((_, i) => editingInstrument.linkedActivitiesIds.includes(i.toString())).map(a => ({ title: a.title, description: a.description })) || [],
         activeBlock.plan.suggestedContent
       );
+
+      // Clean content to ensure arrays only have strings where expected
+      let cleanContent = result.content;
+      if (cleanContent) {
+        if (result.type === 'Diana de Autoevaluación' && Array.isArray(cleanContent.indicators)) {
+          cleanContent.indicators = cleanContent.indicators.map((i: any) => typeof i === 'string' ? i : (i.label || i.description || JSON.stringify(i)));
+        }
+        if (result.type === 'Lista de Cotejo' && Array.isArray(cleanContent.items)) {
+          cleanContent.items = cleanContent.items.map((i: any) => typeof i === 'string' ? i : (i.label || i.description || JSON.stringify(i)));
+        }
+        if (result.type === 'Rúbrica' && Array.isArray(cleanContent.rows)) {
+          cleanContent.rows = cleanContent.rows.map((row: any) => ({
+            ...row,
+            criteria: typeof row.criteria === 'string' ? row.criteria : (row.criteria?.label || row.criteria?.description || JSON.stringify(row.criteria)),
+          }));
+        }
+      }
+
       setEditingInstrument({
         ...editingInstrument,
         name: result.name,
         description: result.description,
-        canvaPrompt: result.canvaPrompt,
         type: result.type as any,
-        content: result.content
+        content: cleanContent
       });
-    } catch (e) {
-      console.error(e);
-      alert("Hubo un error al mejorar el instrumento con IA.");
+    } catch (error: any) {
+      console.error("Error improving instrument:", error);
+      if (error.message?.includes('429') || error.message?.includes('quota')) {
+        alert("Límite de cuota alcanzado. Pulsa 'Copiar Prompt para Gemini' para usarlo fuera de la app.");
+      } else {
+        alert("No se pudo conectar con la IA para mejorar el instrumento.");
+      }
     } finally {
       setIsImprovingInstrument(false);
     }
+  };
+
+  const handleCopyManualPrompt = () => {
+    if (!editingInstrument || !activeBlock || !activeBlock.plan) return;
+    const activities = activeBlock.activities?.filter((_, i) => editingInstrument.linkedActivitiesIds.includes(i.toString())).map(a => ({ title: a.title, description: a.description })) || [];
+    const prompt = getInstrumentManualPrompt(
+      editingInstrument.name,
+      editingInstrument.description,
+      activities,
+      activeBlock.plan.suggestedContent
+    );
+    navigator.clipboard.writeText(prompt);
+    setCopiedId('manual-prompt');
+    setTimeout(() => setCopiedId(null), 2000);
   };
 
   const handleGenerateRealInstrument = async (instrument: EvaluationInstrument) => {
@@ -2327,13 +2282,29 @@ export default function App() {
         activeBlock.plan.suggestedContent
       );
       
+      // Clean content
+      let cleanContent = result.content;
+      if (cleanContent) {
+        if (result.type === 'Diana de Autoevaluación' && Array.isArray(cleanContent.indicators)) {
+          cleanContent.indicators = cleanContent.indicators.map((i: any) => typeof i === 'string' ? i : (i.label || i.description || JSON.stringify(i)));
+        }
+        if (result.type === 'Lista de Cotejo' && Array.isArray(cleanContent.items)) {
+          cleanContent.items = cleanContent.items.map((i: any) => typeof i === 'string' ? i : (i.label || i.description || JSON.stringify(i)));
+        }
+        if (result.type === 'Rúbrica' && Array.isArray(cleanContent.rows)) {
+          cleanContent.rows = cleanContent.rows.map((row: any) => ({
+            ...row,
+            criteria: typeof row.criteria === 'string' ? row.criteria : (row.criteria?.label || row.criteria?.description || JSON.stringify(row.criteria)),
+          }));
+        }
+      }
+
       const newInstrument = {
         ...instrument,
         name: result.name,
         description: result.description,
-        canvaPrompt: result.canvaPrompt,
         type: result.type as any,
-        content: result.content
+        content: cleanContent
       };
 
       const instruments = [...(activeBlock.evaluation?.instruments || [])];
@@ -2347,9 +2318,13 @@ export default function App() {
           } 
         });
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
-      alert("Hubo un error al generar el instrumento con IA.");
+      if (e.message?.includes('429') || e.message?.includes('quota')) {
+        alert("Se ha superado el límite de uso de la IA para hoy. Pronto volverá a estar disponible.\n\nPuedes copiar el prompt manual pulsando el botón 'Copiar Prompt para Gemini' en el panel de detalles para usarlo directamente en gemini.google.com.");
+      } else {
+        alert("Hubo un error al generar el instrumento con IA.");
+      }
     } finally {
       setIsGenerating(null);
     }
@@ -3510,7 +3485,10 @@ export default function App() {
                         <div className="mt-auto pt-6 flex items-center justify-between border-t border-gray-50">
                            <div className="flex items-center gap-2">
                              <button 
-                               onClick={() => setEditingInstrument(inv)}
+                               onClick={(e) => {
+                                 e.stopPropagation();
+                                 setEditingInstrument(inv);
+                               }}
                                className="p-3 bg-gray-50 text-gray-400 hover:text-accent hover:bg-accent/5 rounded-2xl transition-all"
                                title="Configurar y Editar"
                              >
@@ -3518,7 +3496,10 @@ export default function App() {
                              </button>
                              {inv.content && (
                                <button 
-                                 onClick={() => handleExportIndividualInstrument(inv)}
+                                 onClick={(e) => {
+                                   e.stopPropagation();
+                                   handleExportIndividualInstrument(inv);
+                                 }}
                                  className="p-3 bg-gray-50 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-2xl transition-all"
                                  title="Descargar PDF"
                                >
@@ -3529,14 +3510,20 @@ export default function App() {
                            
                            {inv.content ? (
                              <button 
-                               onClick={() => setEditingInstrument(inv)}
+                               onClick={(e) => {
+                                 e.stopPropagation();
+                                 setEditingInstrument(inv);
+                               }}
                                className="px-5 py-2.5 bg-primary text-white rounded-2xl text-[10px] font-bold uppercase tracking-widest hover:bg-accent transition-all flex items-center gap-2 shadow-lg shadow-primary/10"
                              >
                                <Eye className="w-4 h-4" /> Visualizar
                              </button>
                            ) : (
                              <button 
-                               onClick={() => handleGenerateRealInstrument(inv)}
+                               onClick={(e) => {
+                                 e.stopPropagation();
+                                 handleGenerateRealInstrument(inv);
+                               }}
                                disabled={isGenerating === inv.id}
                                className="px-5 py-2.5 bg-accent text-white rounded-2xl text-[10px] font-bold uppercase tracking-widest hover:scale-105 transition-all flex items-center gap-2 shadow-lg shadow-accent/20 disabled:opacity-50"
                              >
@@ -4371,14 +4358,22 @@ export default function App() {
                     <h4 className="text-lg font-bold text-primary">Generar Estructura Maestra</h4>
                     <p className="text-xs text-gray-500 leading-relaxed">¿Deseas que la IA cree la rúbrica completa o el examen basado en los contenidos y actividades seleccionados?</p>
                   </div>
-                  <button 
-                    onClick={handleImproveInstrument}
-                    disabled={isImprovingInstrument || !editingInstrument.name || !editingInstrument.description}
-                    className="px-10 py-4 bg-accent text-white rounded-2xl font-bold uppercase tracking-widest text-[11px] shadow-xl shadow-accent/20 hover:scale-105 active:scale-95 transition-all flex items-center gap-3 mx-auto"
-                  >
-                    {isImprovingInstrument ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />}
-                    Diseñar ahora con IA
-                  </button>
+                  <div className="flex flex-col gap-3 items-center">
+                    <button 
+                      onClick={handleImproveInstrument}
+                      disabled={isImprovingInstrument || !editingInstrument.name || !editingInstrument.description}
+                      className="px-10 py-4 bg-accent text-white rounded-2xl font-bold uppercase tracking-widest text-[11px] shadow-xl shadow-accent/20 hover:scale-105 active:scale-95 transition-all flex items-center gap-3 mx-auto"
+                    >
+                      {isImprovingInstrument ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />}
+                      Diseñar ahora con IA
+                    </button>
+                    <button 
+                      onClick={handleCopyManualPrompt}
+                      className="text-[10px] font-bold text-accent uppercase tracking-widest hover:underline flex items-center gap-2"
+                    >
+                      <Copy className="w-3 h-3" /> {copiedId === 'manual-prompt' ? '¡Copiado!' : 'Copiar Prompt para Gemini (Manual)'}
+                    </button>
+                  </div>
                 </div>
               )}
 
@@ -4415,18 +4410,18 @@ export default function App() {
                         <table className="w-full text-left border-collapse bg-white">
                           <thead>
                             <tr className="bg-gray-50 border-b border-gray-100">
-                              <th className="p-4 text-[10px] font-bold text-primary uppercase tracking-wider">Criterio</th>
-                              {(editingInstrument.content.headers || []).map((h: string) => (
-                                <th key={h} className="p-4 text-[10px] font-bold text-primary uppercase tracking-wider text-center border-l border-gray-50">{h}</th>
+                              <th className="p-4 text-[10px] font-bold text-primary uppercase tracking-wider">{renderVal(editingInstrument.content.headers?.[0] || 'Criterio')}</th>
+                              {(editingInstrument.content.headers || []).slice(1).map((h: string) => (
+                                <th key={h} className="p-4 text-[10px] font-bold text-primary uppercase tracking-wider text-center border-l border-gray-50">{renderVal(h)}</th>
                               ))}
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-gray-50">
                             {editingInstrument.content.rows.map((row: any, rIdx: number) => (
                               <tr key={rIdx} className="hover:bg-gray-50/30 transition-colors">
-                                <td className="p-4 text-[9px] font-bold text-gray-700 bg-gray-50/20">{row.criteria}</td>
+                                <td className="p-4 text-[9px] font-bold text-gray-700 bg-gray-50/20">{renderVal(row.criteria)}</td>
                                 {row.cells.map((cell: string, cIdx: number) => (
-                                  <td key={cIdx} className="p-4 text-[8px] text-gray-500 leading-relaxed border-l border-gray-50 text-center italic">{cell}</td>
+                                  <td key={cIdx} className="p-4 text-[8px] text-gray-500 leading-relaxed border-l border-gray-50 text-center italic">{renderVal(cell)}</td>
                                 ))}
                               </tr>
                             ))}
@@ -4440,7 +4435,7 @@ export default function App() {
                         {editingInstrument.content.items.map((item: string, iIdx: number) => (
                           <div key={iIdx} className="flex items-center gap-4 p-4 bg-white rounded-2xl border border-gray-50 shadow-sm">
                             <div className="w-5 h-5 border-2 border-gray-100 rounded-lg flex-shrink-0" />
-                            <span className="text-[11px] text-gray-600 font-medium">{item}</span>
+                            <span className="text-[11px] text-gray-600 font-medium">{renderVal(item)}</span>
                           </div>
                         ))}
                       </div>
@@ -4451,7 +4446,7 @@ export default function App() {
                         {editingInstrument.content.questions.map((q: any, qIdx: number) => (
                           <div key={qIdx} className="p-5 bg-white rounded-2xl border border-gray-100 shadow-sm space-y-4">
                             <p className="text-[11px] font-bold text-primary flex gap-2">
-                              <span className="text-accent">{qIdx + 1}.</span> {q.question}
+                              <span className="text-accent">{qIdx + 1}.</span> {renderVal(q.question)}
                             </p>
                             {q.options && (
                               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pl-6">
@@ -4460,7 +4455,7 @@ export default function App() {
                                     <div className="w-4 h-4 border border-gray-200 rounded-full flex-shrink-0 flex items-center justify-center text-[8px] font-bold">
                                       {String.fromCharCode(65 + oIdx)}
                                     </div>
-                                    {opt}
+                                    {renderVal(opt)}
                                   </div>
                                 ))}
                               </div>
@@ -4474,12 +4469,12 @@ export default function App() {
                       <div className="space-y-3 p-2">
                         <div className="flex justify-end gap-2 px-4 mb-2">
                           {(editingInstrument.content.scale || []).map((s: string) => (
-                            <div key={s} className="w-12 text-center text-[8px] font-bold text-gray-400 uppercase tracking-widest">{s}</div>
+                            <div key={s} className="w-12 text-center text-[8px] font-bold text-gray-400 uppercase tracking-widest">{renderVal(s)}</div>
                           ))}
                         </div>
                         {editingInstrument.content.items.map((it: string, iIdx: number) => (
                           <div key={iIdx} className="flex items-center gap-4 p-4 bg-white rounded-2xl border border-gray-50 shadow-sm">
-                            <span className="flex-1 text-[11px] text-gray-600 font-medium">{it}</span>
+                            <span className="flex-1 text-[11px] text-gray-600 font-medium">{renderVal(it)}</span>
                             <div className="flex gap-2">
                               {(editingInstrument.content.scale || []).map((_: any, sIdx: number) => (
                                 <div key={sIdx} className="w-12 h-6 border-2 border-gray-100 rounded-lg bg-gray-50/30" />
@@ -4529,7 +4524,8 @@ export default function App() {
                             <circle cx="50" cy="50" r="1.5" fill="#e11d48" className="animate-pulse" />
 
                             {/* Labels on SVG */}
-                            {editingInstrument.content.indicators.map((text: string, i: number, arr: any[]) => {
+                            {editingInstrument.content.indicators.map((val: any, i: number, arr: any[]) => {
+                              const text = typeof val === 'string' ? val : (val.label || val.description || JSON.stringify(val));
                               const angle = (i * 360) / arr.length - 90;
                               const x = 50 + 50 * Math.cos((angle * Math.PI) / 180);
                               const y = 50 + 50 * Math.sin((angle * Math.PI) / 180);
@@ -4556,10 +4552,10 @@ export default function App() {
                         </div>
                         
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full pt-8 border-t border-gray-100">
-                          {editingInstrument.content.indicators.map((text: string, i: number) => (
+                          {editingInstrument.content.indicators.map((val: any, i: number) => (
                             <div key={i} className="flex items-start gap-3 p-3 rounded-xl bg-gray-50/50 border border-transparent hover:border-gray-100 transition-all">
                               <span className="flex-shrink-0 w-6 h-6 flex items-center justify-center bg-white rounded-lg shadow-sm text-[10px] font-bold text-accent border border-gray-100">{i + 1}</span>
-                              <span className="text-[11px] text-gray-600 font-medium leading-relaxed">{text}</span>
+                              <span className="text-[11px] text-gray-600 font-medium leading-relaxed">{renderVal(val)}</span>
                             </div>
                           ))}
                         </div>

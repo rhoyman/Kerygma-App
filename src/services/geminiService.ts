@@ -383,7 +383,7 @@ export async function generateEvaluationInstruments(
   activities: { title: string, description: string }[],
   content: string,
   extraNotes?: string
-): Promise<{ instruments: { name: string, description: string, linkedActivitiesIds: string[], canvaPrompt: string, type: 'Rúbrica' | 'Lista de Cotejo' | 'Prueba Escrita' | 'Escala de Valoración' | 'Otro', content: any }[] }> {
+): Promise<{ instruments: { name: string, description: string, linkedActivitiesIds: string[], type: 'Rúbrica' | 'Lista de Cotejo' | 'Prueba Escrita' | 'Escala de Valoración' | 'Diana de Autoevaluación' | 'Otro', content: any }[] }> {
   const ai = await getAI();
   if (!ai) return { instruments: [] };
 
@@ -397,12 +397,12 @@ export async function generateEvaluationInstruments(
   
   Propón 3 instrumentos de evaluación que abarquen el proceso y el producto final.
   
-  CADA instrumento DEBE incluir su 'content' completo (NO USES PLACEHOLDERS NI RESÚMENES).
-  - Rúbrica: Objeto con "headers" y "rows" (mínimo 3 criterios con descripciones detalladas).
-  - Lista de Cotejo: Objeto con "items" (mínimo 5 indicadores).
-  - Prueba Escrita: Objeto con "questions" (mínimo 3 preguntas).
-  - Escala de Valoración: Objeto con "items" y "scale".
-  - Diana de Autoevaluación: Objeto con "indicators" (mínimo 5 áreas/indicadores de evaluación personal) y "levels" (número de niveles, ej: 4 o 5).
+  CADA instrumento DEBE incluir su 'content' completo como objeto de datos (NO USES PLACEHOLDERS).
+  - Rúbrica: { "headers": [...], "rows": [{"criteria": "...", "cells": [...]}] }
+  - Lista de Cotejo: { "items": [...] }
+  - Prueba Escrita: { "questions": [{"question": "...", "options": [...]}] }
+  - Escala de Valoración: { "items": [...], "scale": [...] }
+  - Diana de Autoevaluación: { "indicators": [...], "levels": 5 } (donde indicators son los ejes del gráfico).
 
   Responde solo JSON:
   {
@@ -411,18 +411,17 @@ export async function generateEvaluationInstruments(
         "name": "...",
         "description": "...",
         "linkedActivitiesIds": ["0"],
-        "canvaPrompt": "...",
         "type": "Rúbrica | Lista de Cotejo | Prueba Escrita | Escala de Valoración | Diana de Autoevaluación",
         "content": { ... }
       }
     ]
   }
-  Sé creativo y pedagógicamente riguroso.`;
+  Sé creativo y pedagógicamente riguroso. No generes imágenes, solo datos estructurados.`;
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: prompt,
+      model: "gemini-3.1-flash-lite",
+      contents: [{ role: "user", parts: [{ text: prompt }] }]
     });
     const text = response.text?.trim() || "{}";
     const cleanJson = text.replace(/```json/g, "").replace(/```/g, "").trim();
@@ -465,12 +464,13 @@ export async function generateDiversityMeasures(
         "methodologyAdjustments": "ajustes en las actividades"
       }
     ]
-  }`;
+  }
+  Responde solo JSON sin markdown.`;
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: prompt,
+      model: "gemini-3.1-flash-lite",
+      contents: [{ role: "user", parts: [{ text: prompt }] }]
     });
     const text = response.text?.trim() || "{}";
     const cleanJson = text.replace(/```json/g, "").replace(/```/g, "").trim();
@@ -486,44 +486,62 @@ export async function improveInstrument(
   description: string,
   activities: { title: string, description: string }[],
   contentSA: string
-): Promise<{ name: string, description: string, canvaPrompt: string, type: string, content: any }> {
+): Promise<{ name: string, description: string, type: string, content: any }> {
   const ai = await getAI();
-  if (!ai) return { name, description, canvaPrompt: "", type: "Otro", content: {} };
+  if (!ai) return { name, description, type: "Otro", content: {} };
 
   const prompt = `Actúa como un experto en evaluación educativa para Religión Católica.
-  Tengo el siguiente instrumento de evaluación parcial:
+  Genera el contenido REAL, COMPLETO y LISTO PARA IMPRIMIR del siguiente instrumento:
   - Nombre: ${name}
-  - Descripción actual: ${description}
+  - Descripción: ${description}
   
-  Este instrumento se usará en una situación de aprendizaje con estos contenidos: ${contentSA}
-  
-  Y estas actividades vinculadas:
+  CONTEXTO SdA: ${contentSA}
+  ACTIVIDADES:
   ${activities.map((a, i) => `Actividad: ${a.title}. ${a.description}`).join('\n')}
   
-  Genera el contenido REAL, COMPLETO y LISTO PARA IMPRIMIR de este instrumento. No omitas ningún detalle.
-  Define el tipo ('Rúbrica', 'Lista de Cotejo', 'Prueba Escrita', 'Escala de Valoración', 'Diana de Autoevaluación', 'Otro') y crea el "content" adecuado (tabla, lista de preguntas, diana, etc.).
-  
+  Crea el objeto JSON "content" adecuado (sin imágenes, sin markdown):
+  - Rúbrica: { "headers": [...], "rows": [{ "criteria": "...", "cells": [...] }] }
+  - Prueba Escrita: { "questions": [{ "question": "...", "options": [...] }] }
+  - Lista de Cotejo: { "items": [...] }
+  - Diana de Autoevaluación: { "indicators": [...], "levels": 5 }
+
   Responde ÚNICAMENTE con un objeto JSON:
   {
-    "name": "Nombre mejorado",
-    "description": "Descripción detallada",
-    "canvaPrompt": "...",
-    "type": "...",
+    "name": "Nombre final",
+    "description": "Descripción pedagógica",
+    "type": "Rúbrica | Prueba Escrita | Lista de Cotejo | Diana de Autoevaluación",
     "content": { ... }
   }`;
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-3.1-pro-preview",
-      contents: prompt,
+      model: "gemini-3.1-flash-lite",
+      contents: [{ role: "user", parts: [{ text: prompt }] }]
     });
     const text = response.text?.trim() || "{}";
     const cleanJson = text.replace(/```json/g, "").replace(/```/g, "").trim();
     return JSON.parse(cleanJson);
   } catch (error) {
     console.error("Error improving instrument:", error);
-    return { name, description, canvaPrompt: "", type: "Otro", content: {} };
+    throw error;
   }
+}
+
+export function getInstrumentManualPrompt(
+  name: string,
+  description: string,
+  activities: { title: string, description: string }[],
+  contentSA: string
+): string {
+  return `Actúa como un experto en evaluación educativa para Religión Católica.
+Diseña el contenido real de un instrumento de evaluación con estos datos:
+- Nombre: ${name}
+- Descripción: ${description}
+- Contexto de la Unidad: ${contentSA}
+- Actividades realizadas:
+${activities.map((a, i) => `* ${a.title}: ${a.description}`).join('\n')}
+
+Por favor, genera una Rúbrica detallada, un Examen o una Diana de autoevaluación (elige el formato más adecuado si no se especifica) con criterios claros sacados del currículo LOMLOE y adaptados a este tema.`;
 }
 
 export async function generateDocenteReflection(
