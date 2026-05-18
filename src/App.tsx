@@ -108,6 +108,7 @@ import {
   isAIConfigured,
   getInstrumentManualPrompt
 } from './services/geminiService';
+import ReactMarkdown from 'react-markdown';
 import { useAuth } from './lib/AuthContext';
 import { db } from './lib/firebase';
 import { 
@@ -567,7 +568,7 @@ export default function App() {
     const saved = localStorage.getItem('kerygma_blocks');
     return saved ? JSON.parse(saved) : DEFAULT_CURRICULUM;
   });
-  
+
   const [studentGroups, setStudentGroups] = useState<StudentGroup[]>([]);
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
   const [showAddGroupModal, setShowAddGroupModal] = useState(false);
@@ -588,7 +589,7 @@ export default function App() {
   useEffect(() => {
     checkAI();
   }, []);
-  const [viewSelection, setViewSelection] = useState<{ stage: string; level: string } | null>(null);
+  const [viewSelection, setViewSelection] = useState<{ stage: CurriculumBlock['stage']; level: string } | null>(null);
   const [activeBlockId, setActiveBlockId] = useState<string>('');
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -603,6 +604,7 @@ export default function App() {
   const [deleteConfirmation, setDeleteConfirmation] = useState<string | null>(null);
   const [editingInstrument, setEditingInstrument] = useState<EvaluationInstrument | null>(null);
   const [isImprovingInstrument, setIsImprovingInstrument] = useState(false);
+  const [isEditingPlanning, setIsEditingPlanning] = useState(false);
   const tokenRef = useRef<string | null>(null);
 
   const handleSaveGroup = async (newGroup: Omit<StudentGroup, 'id' | 'userId'>) => {
@@ -837,6 +839,10 @@ export default function App() {
       doc.setFont("helvetica", "bold");
       doc.setFontSize(11);
       doc.text(`Producto Final: ${targetBlock.plan?.finalProductTitle || 'Sin título'}`, 20, currentY);
+      currentY += 5;
+      doc.setFontSize(9);
+      doc.setFont("helvetica", "italic");
+      doc.text(`Modalidad: ${targetBlock.plan?.finalProductMode === 'cumulative' ? 'Acumulativo' : 'Recopilatorio'}`, 20, currentY);
       currentY += 6;
       doc.setFont("helvetica", "normal");
       doc.setFontSize(10);
@@ -1130,7 +1136,7 @@ export default function App() {
       
       const productTitle = block.plan.finalProductTitle || block.plan.finalProduct || 'No definido';
       content += `### Producto Final: ${productTitle}\n`;
-      content += `*${block.plan.finalProductMode === 'cumulative' ? 'Propuesta Acumulativa' : 'Actividad de Síntesis'}*\n\n`;
+      content += `*Modalidad: ${block.plan.finalProductMode === 'cumulative' ? 'Acumulativo' : 'Recopilatorio'}*\n\n`;
       if (block.plan.finalProductDescription) {
         content += `**Descripción**\n${block.plan.finalProductDescription}\n\n`;
       }
@@ -1678,33 +1684,42 @@ export default function App() {
     };
     const { stage, level } = block;
 
-    if (stage === 'Secundaria') {
-      if (level === '1º ESO') {
-        updates.competenciasEspecíficas = COMPETENCIAS_ESO.map(ce => ({
-          ...ce,
-          criteriosEvaluación: CRITERIOS_ESO_1[ce.id] || []
-        }));
-      } else if (level === '2º ESO') {
-        updates.competenciasEspecíficas = COMPETENCIAS_ESO.map(ce => ({
-          ...ce,
-          criteriosEvaluación: CRITERIOS_ESO_2[ce.id] || []
-        }));
-      } else if (level === '3º ESO') {
-        updates.competenciasEspecíficas = COMPETENCIAS_ESO.map(ce => ({
-          ...ce,
-          criteriosEvaluación: CRITERIOS_ESO_3[ce.id] || []
-        }));
-      } else if (level === '4º ESO') {
-        updates.competenciasEspecíficas = COMPETENCIAS_ESO.map(ce => ({
-          ...ce,
-          criteriosEvaluación: CRITERIOS_ESO_4[ce.id] || []
-        }));
-      } else {
-        updates.competenciasEspecíficas = COMPETENCIAS_ESO.map(ce => ({
-          ...ce,
-          criteriosEvaluación: []
-        }));
+    const getCourseCode = (l: string) => {
+      const match = l.match(/\d+/);
+      const num = match ? match[0] : l;
+      if (stage === 'Infantil') {
+        if (num === '3') return '1';
+        if (num === '4') return '2';
+        if (num === '5') return '3';
       }
+      return num;
+    };
+
+    const courseCode = getCourseCode(level);
+
+    const mapCompetencias = (comps: any[], criteriaMap: Record<string, any[]>) => {
+      return comps.map((ce, index) => {
+        const compNum = index + 1;
+        const newCompId = `REL.${courseCode}.${compNum}`;
+        const originalCriteria = criteriaMap[ce.id] || [];
+        return {
+          ...ce,
+          id: newCompId,
+          criteriosEvaluación: originalCriteria.map((crit) => ({
+            ...crit,
+            id: `${newCompId}.1`,
+          }))
+        };
+      });
+    };
+
+    if (stage === 'Secundaria') {
+      const criteriaMap = level === '1º ESO' ? CRITERIOS_ESO_1 :
+                        level === '2º ESO' ? CRITERIOS_ESO_2 :
+                        level === '3º ESO' ? CRITERIOS_ESO_3 :
+                        level === '4º ESO' ? CRITERIOS_ESO_4 : {};
+      
+      updates.competenciasEspecíficas = mapCompetencias(COMPETENCIAS_ESO, criteriaMap);
 
       if (level === '1º ESO' || level === '2º ESO') {
         updates.saberesBásicos = SABERES_ESO_1_2;
@@ -1714,83 +1729,28 @@ export default function App() {
         updates.saberesBásicos = [];
       }
     } else if (stage === 'Infantil') {
-      if (level === '3 años') {
-        updates.competenciasEspecíficas = COMPETENCIAS_INFANTIL.map(ce => ({
-          ...ce,
-          criteriosEvaluación: CRITERIOS_INFANTIL_3ANOS[ce.id] || []
-        }));
-      } else if (level === '4 años') {
-        updates.competenciasEspecíficas = COMPETENCIAS_INFANTIL.map(ce => ({
-          ...ce,
-          criteriosEvaluación: CRITERIOS_INFANTIL_4ANOS[ce.id] || []
-        }));
-      } else if (level === '5 años') {
-        updates.competenciasEspecíficas = COMPETENCIAS_INFANTIL.map(ce => ({
-          ...ce,
-          criteriosEvaluación: CRITERIOS_INFANTIL_5ANOS[ce.id] || []
-        }));
-      } else {
-        updates.competenciasEspecíficas = COMPETENCIAS_INFANTIL.map(ce => ({
-          ...ce,
-          criteriosEvaluación: []
-        }));
-      }
+      const criteriaMap = level === '3 años' ? CRITERIOS_INFANTIL_3ANOS :
+                        level === '4 años' ? CRITERIOS_INFANTIL_4ANOS :
+                        level === '5 años' ? CRITERIOS_INFANTIL_5ANOS : {};
+      
+      updates.competenciasEspecíficas = mapCompetencias(COMPETENCIAS_INFANTIL, criteriaMap);
       updates.saberesBásicos = SABERES_INFANTIL;
     } else if (stage === 'Bachillerato') {
-      if (level === '1º Bachillerato') {
-        updates.competenciasEspecíficas = COMPETENCIAS_BACHILLERATO.map(ce => ({
-          ...ce,
-          criteriosEvaluación: CRITERIOS_BACHILLERATO_1[ce.id] || []
-        }));
-      } else if (level === '2º Bachillerato') {
-        updates.competenciasEspecíficas = COMPETENCIAS_BACHILLERATO.map(ce => ({
-          ...ce,
-          criteriosEvaluación: CRITERIOS_BACHILLERATO_2[ce.id] || []
-        }));
-      } else {
-        updates.competenciasEspecíficas = COMPETENCIAS_BACHILLERATO.map(ce => ({
-          ...ce,
-          criteriosEvaluación: []
-        }));
-      }
+      const criteriaMap = level === '1º Bachillerato' ? CRITERIOS_BACHILLERATO_1 :
+                        level === '2º Bachillerato' ? CRITERIOS_BACHILLERATO_2 : {};
+      
+      updates.competenciasEspecíficas = mapCompetencias(COMPETENCIAS_BACHILLERATO, criteriaMap);
       updates.saberesBásicos = SABERES_BACHILLERATO;
     } else if (stage === 'Primaria') {
-      if (level === '1º Primaria') {
-        updates.competenciasEspecíficas = COMPETENCIAS_PRIMARIA.map(ce => ({
-          ...ce,
-          criteriosEvaluación: CRITERIOS_PRIMARIA_1[ce.id] || []
-        }));
-      } else if (level === '2º Primaria') {
-        updates.competenciasEspecíficas = COMPETENCIAS_PRIMARIA.map(ce => ({
-          ...ce,
-          criteriosEvaluación: CRITERIOS_PRIMARIA_2[ce.id] || []
-        }));
-      } else if (level === '3º Primaria') {
-        updates.competenciasEspecíficas = COMPETENCIAS_PRIMARIA.map(ce => ({
-          ...ce,
-          criteriosEvaluación: CRITERIOS_PRIMARIA_3[ce.id] || []
-        }));
-      } else if (level === '4º Primaria') {
-        updates.competenciasEspecíficas = COMPETENCIAS_PRIMARIA.map(ce => ({
-          ...ce,
-          criteriosEvaluación: CRITERIOS_PRIMARIA_4[ce.id] || []
-        }));
-      } else if (level === '5º Primaria') {
-        updates.competenciasEspecíficas = COMPETENCIAS_PRIMARIA.map(ce => ({
-          ...ce,
-          criteriosEvaluación: CRITERIOS_PRIMARIA_5[ce.id] || []
-        }));
-      } else if (level === '6º Primaria') {
-        updates.competenciasEspecíficas = COMPETENCIAS_PRIMARIA.map(ce => ({
-          ...ce,
-          criteriosEvaluación: CRITERIOS_PRIMARIA_6[ce.id] || []
-        }));
-      } else {
-        updates.competenciasEspecíficas = COMPETENCIAS_PRIMARIA.map(ce => ({
-          ...ce,
-          criteriosEvaluación: []
-        }));
-      }
+      const criteriaMap = level === '1º Primaria' ? CRITERIOS_PRIMARIA_1 :
+                        level === '2º Primaria' ? CRITERIOS_PRIMARIA_2 :
+                        level === '3º Primaria' ? CRITERIOS_PRIMARIA_3 :
+                        level === '4º Primaria' ? CRITERIOS_PRIMARIA_4 :
+                        level === '5º Primaria' ? CRITERIOS_PRIMARIA_5 :
+                        level === '6º Primaria' ? CRITERIOS_PRIMARIA_6 : {};
+      
+      updates.competenciasEspecíficas = mapCompetencias(COMPETENCIAS_PRIMARIA, criteriaMap);
+      
       if (level === '1º Primaria' || level === '2º Primaria') {
         updates.saberesBásicos = SABERES_PRIMARIA_1_2;
       } else if (level === '3º Primaria' || level === '4º Primaria') {
@@ -1888,7 +1848,7 @@ export default function App() {
     return { ceCount, critCount, saberCount };
   };
 
-  const addNewBlock = (stageOverride?: string, levelOverride?: string) => {
+  const addNewBlock = (stageOverride?: CurriculumBlock['stage'], levelOverride?: string) => {
     const id = `block-${Date.now()}`;
     const newBlock: CurriculumBlock = {
       id,
@@ -2008,7 +1968,7 @@ export default function App() {
       plan: {
         suggestedContent: suggestion,
         methodology: '',
-        finalProductMode: 'compilatory',
+        finalProductMode: 'recopilatory',
         finalProduct: '',
         numberOfActivities: 5
       }
@@ -2248,7 +2208,7 @@ export default function App() {
     } catch (error: any) {
       console.error("Error improving instrument:", error);
       if (error.message?.includes('429') || error.message?.includes('quota')) {
-        alert("Límite de cuota alcanzado. Pulsa 'Copiar Prompt para Gemini' para usarlo fuera de la app.");
+        alert("Límite de cuota alcanzado. Inténtalo de nuevo en unos minutos.");
       } else {
         alert("No se pudo conectar con la IA para mejorar el instrumento.");
       }
@@ -2321,7 +2281,7 @@ export default function App() {
     } catch (e: any) {
       console.error(e);
       if (e.message?.includes('429') || e.message?.includes('quota')) {
-        alert("Se ha superado el límite de uso de la IA para hoy. Pronto volverá a estar disponible.\n\nPuedes copiar el prompt manual pulsando el botón 'Copiar Prompt para Gemini' en el panel de detalles para usarlo directamente en gemini.google.com.");
+        alert("Se ha superado el límite de uso de la IA para hoy. Pronto volverá a estar disponible.");
       } else {
         alert("Hubo un error al generar el instrumento con IA.");
       }
@@ -2350,36 +2310,58 @@ export default function App() {
     setEditingInstrument(null);
   };
 
-  const handleGenerateDiversityAction = async (needs: string, groupId?: string) => {
-    if (!activeBlock || !activeBlock.activities || !activeBlock.plan) return;
+  const handleGenerateDiversityAction = async (needs: string, groupId?: string, blockId?: string) => {
+    const targetBlockId = blockId || activeBlockId;
+    const targetBlock = blocks.find(b => b.id === targetBlockId);
+    
+    if (!targetBlock) return;
+
+    // If we are in groups view, navigate to the SdA to show progress
+    if (groupId) {
+      setActiveBlockId(targetBlockId);
+      setActiveGroupId(null);
+      updateBlock(targetBlockId, { step: 'diversity' });
+      // Wait a bit for the UI to switch
+    }
+
+    if (!targetBlock.activities || !targetBlock.plan) {
+      console.warn("SdA not ready for diversity measures. Content or activities missing.");
+      return;
+    }
+
     setIsAnalyzing(true);
     
-    const result = await generateDiversityMeasures(
-      activeBlock.activities.map(a => ({ title: a.title, description: a.description })),
-      activeBlock.plan.suggestedContent,
-      needs
-    );
-    
-    if (groupId) {
-      const currentMap = activeBlock.groupDiversity || {};
-      updateBlock(activeBlock.id, {
-        groupDiversity: {
-          ...currentMap,
-          [groupId]: {
-            measures: result.measures.map((m, i) => ({ ...m, id: `div-${groupId}-${i}` }) as any),
-            generalObservations: `Adaptaciones específicas para el grupo: ${needs}`
+    try {
+      const result = await generateDiversityMeasures(
+        targetBlock.activities.map(a => ({ title: a.title, description: a.description })),
+        targetBlock.plan.suggestedContent,
+        needs
+      );
+      
+      if (groupId) {
+        const currentMap = targetBlock.groupDiversity || {};
+        updateBlock(targetBlockId, {
+          groupDiversity: {
+            ...currentMap,
+            [groupId]: {
+              measures: result.measures.map((m, i) => ({ ...m, id: `div-${groupId}-${i}` }) as any),
+              generalObservations: `Adaptaciones específicas para el grupo: ${needs}`
+            }
           }
-        }
-      });
-    } else {
-      updateBlock(activeBlock.id, { 
-        diversity: {
-          measures: result.measures.map((m, i) => ({ ...m, id: `div-${i}` }) as any),
-          generalObservations: `Necesidades atendidas: ${needs}`
-        }
-      });
+        });
+      } else {
+        updateBlock(targetBlockId, { 
+          diversity: {
+            measures: result.measures.map((m, i) => ({ ...m, id: `div-${i}` }) as any),
+            generalObservations: `Necesidades atendidas: ${needs}`
+          }
+        });
+      }
+    } catch (error) {
+      console.error("Error generating diversity measures:", error);
+    } finally {
+      setIsAnalyzing(false);
     }
-    setIsAnalyzing(false);
   };
 
   const handleRegenerateFinalProductAction = async () => {
@@ -2725,7 +2707,7 @@ export default function App() {
                           <button
                             key={level}
                             onClick={() => {
-                              setViewSelection({ stage, level });
+                              setViewSelection({ stage: stage as any, level });
                               setActiveBlockId('');
                               setActiveGroupId(null);
                               if (window.innerWidth < 768) setIsSidebarOpen(false);
@@ -2818,8 +2800,9 @@ export default function App() {
                             { id: 'selection', label: '1. Situación' },
                             { id: 'planning', label: '2. Propuesta' },
                             { id: 'sequencing', label: '3. Aula' },
-                            { id: 'evaluation', label: '4. Evaluación' },
-                            { id: 'docente_eval', label: '5. Práctica Docente' }
+                            { id: 'diversity', label: '4. Diversidad' },
+                            { id: 'evaluation', label: '5. Evaluación' },
+                            { id: 'docente_eval', label: '6. Práctica Docente' }
                           ].map((s) => (
                             <option key={s.id} value={s.id}>
                               {s.label}
@@ -2832,24 +2815,25 @@ export default function App() {
                       </div>
 
                       <div className="flex items-center justify-between md:justify-end w-full md:w-auto gap-4 md:gap-3">
-                        {activeBlock.step === 'selection' && (
-                          <div className="flex items-center gap-3 bg-white px-4 py-1.5 rounded-full border border-gray-100 shadow-sm">
-                            <div className="flex gap-3 pr-3 border-r border-gray-100">
-                              <div className="flex flex-col items-center">
-                                <span className="text-[9px] font-bold text-gray-400 uppercase tracking-tighter leading-none">Comp.</span>
-                                <span className="text-xs font-bold text-primary leading-none mt-1">{getSelectedCounts(activeBlock).ceCount}</span>
-                              </div>
-                              <div className="flex flex-col items-center">
-                                <span className="text-[9px] font-bold text-gray-400 uppercase tracking-tighter leading-none">Crit.</span>
-                                <span className="text-xs font-bold text-accent leading-none mt-1">{getSelectedCounts(activeBlock).critCount}</span>
-                              </div>
-                              <div className="flex flex-col items-center">
-                                <span className="text-[9px] font-bold text-gray-400 uppercase tracking-tighter leading-none">Sab.</span>
-                                <span className="text-xs font-bold text-primary/60 leading-none mt-1">{getSelectedCounts(activeBlock).saberCount}</span>
-                              </div>
+                        <div className="flex items-center gap-3 bg-white px-4 py-1.5 rounded-full border border-gray-100 shadow-sm">
+                          <div className="flex gap-3 pr-3 border-r border-gray-100">
+                            <div className="flex flex-col items-center">
+                              <span className="text-[9px] font-bold text-gray-400 uppercase tracking-tighter leading-none">Comp.</span>
+                              <span className="text-xs font-bold text-primary leading-none mt-1">{getSelectedCounts(activeBlock).ceCount}</span>
                             </div>
+                            <div className="flex flex-col items-center">
+                              <span className="text-[9px] font-bold text-gray-400 uppercase tracking-tighter leading-none">Crit.</span>
+                              <span className="text-xs font-bold text-accent leading-none mt-1">{getSelectedCounts(activeBlock).critCount}</span>
+                            </div>
+                            <div className="flex flex-col items-center">
+                              <span className="text-[9px] font-bold text-gray-400 uppercase tracking-tighter leading-none">Sab.</span>
+                              <span className="text-xs font-bold text-primary/60 leading-none mt-1">{getSelectedCounts(activeBlock).saberCount}</span>
+                            </div>
+                          </div>
+                          
+                          {activeBlock.step === 'selection' ? (
                             <button
-                              onClick={handleGeneratePlanning}
+                              onClick={() => setStep('planning')}
                               disabled={isAnalyzing || getSelectedCounts(activeBlock).critCount === 0}
                               className={`flex items-center gap-1.5 px-3 py-1 rounded-full font-bold text-[9px] uppercase tracking-widest transition-all ${
                                 isAnalyzing || getSelectedCounts(activeBlock).critCount === 0
@@ -2860,8 +2844,25 @@ export default function App() {
                               {isAnalyzing ? <Loader2 className="w-3 h-3 animate-spin" /> : <ChevronRight className="w-3 h-3" />}
                               Continuar
                             </button>
-                          </div>
-                        )}
+                          ) : activeBlock.step === 'planning' ? (
+                            <button
+                              onClick={() => handleGenerateSequencingAction()}
+                              disabled={isAnalyzing || !activeBlock.plan?.suggestedContent}
+                              className={`flex items-center gap-1.5 px-3 py-1 rounded-full font-bold text-[9px] uppercase tracking-widest transition-all ${
+                                isAnalyzing || !activeBlock.plan?.suggestedContent
+                                  ? 'bg-gray-50 text-gray-300'
+                                  : 'bg-primary/10 text-primary hover:bg-primary/20'
+                              }`}
+                            >
+                              {isAnalyzing ? <Loader2 className="w-3 h-3 animate-spin" /> : <ChevronRight className="w-3 h-3" />}
+                              Continuar al aula
+                            </button>
+                          ) : (
+                            <div className="px-2">
+                               <span className="text-[8px] font-bold text-gray-300 uppercase tracking-widest">Currículo Fijado</span>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </motion.div>
@@ -2869,12 +2870,12 @@ export default function App() {
               </AnimatePresence>
             </header>
 
-            <div className="flex-1 overflow-y-auto bg-gray-50/50 p-8 max-w-5xl mx-auto w-full no-scrollbar">
+            <div className="flex-1 overflow-y-auto bg-gray-50/50 p-8 max-w-5xl mx-auto w-full no-scrollbar space-y-8">
               {!activeBlock.initialized ? (
                 // Step 1: Initial configuration (Stage/Level)
                 <div className="h-full flex flex-col items-center justify-center space-y-12 max-w-2xl mx-auto text-center">
               <div className="space-y-4">
-                <h2 className="text-4xl font-bold serif text-primary">Nueva Situación</h2>
+                <h2 className="text-4xl font-bold serif text-primary">1. Situación</h2>
                 <p className="text-lg text-gray-500">Comencemos definiendo el nivel y la etapa educativa.</p>
               </div>
 
@@ -2938,193 +2939,144 @@ export default function App() {
                   >
                     <ChevronLeft className="w-6 h-6" />
                   </button>
-                  <h2 className="text-4xl font-bold serif text-primary">Aterrizaje y Metodología</h2>
+                  <h2 className="text-4xl font-bold serif text-primary">2. Propuesta</h2>
                 </div>
                 <p className="text-gray-500 text-lg">Define qué vas a enseñar y cómo lo vas a hacer.</p>
               </div>
 
-              {!activeBlock.plan ? (
-                <div className="bg-white rounded-[2.5rem] p-12 border border-blue-50 shadow-xl shadow-blue-500/5 text-center space-y-8">
-                  <div className="w-20 h-20 bg-blue-50 rounded-full flex items-center justify-center mx-auto">
-                    <Sparkles className="w-10 h-10 text-blue-500" />
-                  </div>
-                  <div className="space-y-3">
-                    <h3 className="text-2xl font-bold text-gray-900">¿Generamos tu propuesta?</h3>
-                    <p className="text-gray-500 max-w-md mx-auto">
-                      Usaremos los elementos curriculares seleccionados y tus materiales para diseñar un itinerario de contenidos personalizado.
-                    </p>
-                  </div>
-
-                  <div className="max-w-md mx-auto space-y-2 text-left">
-                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Notas o instrucciones adicionales</label>
-                    <textarea
-                      value={activeBlock.planningNotes || ''}
-                      onChange={(e) => updateBlock(activeBlock.id, { planningNotes: e.target.value })}
-                      placeholder="Ej: Evita contenidos sobre X, céntrate más en Y, quiero que se mencione Z..."
-                      className="w-full h-24 bg-gray-50 border border-gray-100 rounded-2xl p-4 focus:ring-2 focus:ring-primary/10 focus:bg-white focus:border-primary/20 transition-all text-sm outline-none resize-none"
-                    />
-                    <p className="text-[10px] text-gray-400 italic px-1">Indica si quieres abordar o evitar temas concretos para que la IA lo tenga en cuenta.</p>
-                  </div>
-
-                  <button
-                    onClick={handleGeneratePlanning}
-                    disabled={isAnalyzing || getSelectedCounts(activeBlock).critCount === 0}
-                    className={`inline-flex items-center gap-3 px-8 py-4 rounded-2xl font-bold text-lg shadow-xl transition-all ${
-                      isAnalyzing || getSelectedCounts(activeBlock).critCount === 0
-                        ? 'bg-gray-100 text-gray-400'
-                        : 'bg-primary text-white hover:bg-primary/90 shadow-primary/20'
-                    }`}
-                  >
-                    {isAnalyzing ? (
-                      <>
-                        <Loader2 className="w-6 h-6 animate-spin" />
-                        <span>Generando propuesta...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles className="w-6 h-6" />
-                        <span>Generar Propuesta de Contenidos</span>
-                    </>
-                    )}
-                  </button>
-                  {getSelectedCounts(activeBlock).critCount === 0 && (
-                    <p className="text-xs text-red-400 font-medium italic">Debes seleccionar al menos un criterio de evaluación en la pestaña anterior.</p>
-                  )}
+              {/* Prefs section in step 2: ONLY Focus Notes at top after title */}
+              <section className="bg-white rounded-3xl border border-primary/10 shadow-xl shadow-primary/5 overflow-hidden">
+                <div className="p-4 border-b border-primary/5 bg-primary/5 flex items-center gap-3">
+                  <Target className="w-4 h-4 text-primary" />
+                  <h3 className="font-bold text-[10px] text-primary uppercase tracking-widest">Notas de Enfoque (¿Qué tratar o evitar?) (OPCIONAL)</h3>
                 </div>
-              ) : (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                  {/* Content Proposal */}
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Target className="w-5 h-5 text-primary" />
-                        <h3 className="font-bold text-lg">Propuesta de Contenidos</h3>
-                      </div>
-                      <button 
-                        onClick={handleRegeneratePlanning}
-                        className="text-gray-400 hover:text-purple-600 transition-colors"
-                        title="Probar otra sugerencia"
-                      >
-                        <RotateCw className={`w-4 h-4 ${isAnalyzing ? 'animate-spin' : ''}`} />
-                      </button>
+                <div className="p-6">
+                  <AutoResizeTextArea
+                    value={activeBlock.planningNotes || ''}
+                    onChange={(e) => updateBlock(activeBlock.id, { planningNotes: e.target.value })}
+                    placeholder="Ej: Introduce temas de sostenibilidad, evita tecnicismos complejos..."
+                    className="w-full bg-transparent border-none p-0 focus:ring-0 text-sm text-gray-600 min-h-[60px] italic"
+                  />
+                </div>
+              </section>
+
+              {!activeBlock.plan ? (
+                <div className="space-y-12">
+                  <div className="bg-white rounded-[2.5rem] p-12 border border-blue-50 shadow-xl shadow-blue-500/5 text-center space-y-8">
+                    <div className="w-20 h-20 bg-blue-50 rounded-full flex items-center justify-center mx-auto">
+                      <Sparkles className="w-10 h-10 text-blue-500" />
                     </div>
-                    <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-xl shadow-gray-200/50 min-h-[400px]">
-                      <div className="prose prose-sm max-w-none">
-                        <AutoResizeTextArea
-                          value={activeBlock.plan.suggestedContent || ''}
-                          onChange={(e) => updateBlock(activeBlock.id, { 
-                            plan: { ...activeBlock.plan!, suggestedContent: e.target.value } 
-                          })}
-                          className="w-full bg-transparent border-none p-0 focus:ring-0 text-sm leading-relaxed"
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Methodology and Settings */}
-                  <div className="space-y-8">
-                    <div className="space-y-4">
-                      <div className="flex items-center gap-2">
-                        <Settings className="w-5 h-5 text-primary" />
-                        <h3 className="font-bold text-lg">Detalles Metodológicos</h3>
-                      </div>
-                      <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-xl shadow-gray-200/50 space-y-6">
-                        <div className="space-y-2">
-                          <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Contenido: ¿Qué tratar o evitar?</label>
-                          <textarea
-                            value={activeBlock.planningNotes || ''}
-                            onChange={(e) => updateBlock(activeBlock.id, { planningNotes: e.target.value })}
-                            placeholder="Ej: Evita contenidos sobre X, céntrate más en Y..."
-                            className="w-full h-24 bg-gray-50 border border-transparent rounded-2xl p-4 focus:ring-2 focus:ring-primary/10 focus:bg-white focus:border-primary/20 transition-all text-sm outline-none resize-none"
-                          />
-                        </div>
-
-                        <div className="space-y-2">
-                          <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Metodología: recursos y preferencias</label>
-                          <textarea
-                            value={activeBlock.plan.methodology || ''}
-                            onChange={(e) => updateBlock(activeBlock.id, { 
-                              plan: { ...activeBlock.plan!, methodology: e.target.value } 
-                            })}
-                            placeholder="Ej: Tengo tabletas para todos, pizarra digital, quiero trabajar por proyectos, actividades para hacer a mano..."
-                            className="w-full h-32 bg-gray-50 border border-transparent rounded-2xl p-4 focus:ring-2 focus:ring-primary/10 focus:bg-white focus:border-primary/20 transition-all text-sm outline-none resize-none"
-                          />
-                        </div>
-
-                        <div className="space-y-2">
-                          <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Número de Sesiones</label>
-                          <div className="flex gap-2">
-                            {[3, 4, 5, 6, 7, 8].map(num => (
-                              <button
-                                key={num}
-                                onClick={() => updateBlock(activeBlock.id, { 
-                                  plan: { ...activeBlock.plan!, numberOfActivities: num } 
-                                })}
-                                className={`flex-1 p-3 rounded-xl border text-[10px] font-bold uppercase transition-all ${
-                                  (activeBlock.plan?.numberOfActivities || 5) === num
-                                    ? 'bg-primary border-primary text-white shadow-md'
-                                    : 'bg-transparent border-gray-200 text-gray-400 hover:border-gray-300'
-                                }`}
-                              >
-                                {num}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-
-                        <div className="space-y-2">
-                          <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Modalidad Producto Final</label>
-                          <div className="grid grid-cols-2 gap-3">
-                            <button
-                              onClick={() => updateBlock(activeBlock.id, { 
-                                plan: { ...activeBlock.plan!, finalProductMode: 'cumulative' } 
-                              })}
-                              className={`p-3 rounded-xl border text-[10px] font-bold uppercase transition-all ${
-                                activeBlock.plan?.finalProductMode === 'cumulative'
-                                  ? 'bg-primary border-primary text-white shadow-md'
-                                  : 'bg-transparent border-gray-200 text-gray-400 hover:border-gray-300'
-                              }`}
-                            >
-                              Acumulativo
-                            </button>
-                            <button
-                              onClick={() => updateBlock(activeBlock.id, { 
-                                plan: { ...activeBlock.plan!, finalProductMode: 'compilatory' } 
-                              })}
-                              className={`p-3 rounded-xl border text-[10px] font-bold uppercase transition-all ${
-                                activeBlock.plan?.finalProductMode === 'compilatory'
-                                  ? 'bg-primary border-primary text-white shadow-md'
-                                  : 'bg-transparent border-gray-200 text-gray-400 hover:border-gray-300'
-                              }`}
-                            >
-                              Compilatorio
-                            </button>
-                          </div>
-                          <p className="text-[10px] text-gray-400 italic mt-2 px-1">
-                            {activeBlock.plan?.finalProductMode === 'cumulative' 
-                              ? "Suma de las tareas realizadas durante la situación." 
-                              : "Una actividad nueva que sintetiza todo lo aprendido."}
-                          </p>
-                        </div>
-                      </div>
+                    <div className="space-y-3">
+                      <h3 className="text-2xl font-bold text-gray-900">¿Generamos tu propuesta de contenidos?</h3>
+                      <p className="text-gray-500 max-w-md mx-auto">
+                        Usaremos los elementos curriculares seleccionados y tus materiales iniciales para diseñar un itinerario personalizado.
+                      </p>
                     </div>
 
                     <button
-                      onClick={handleGenerateSequencingAction}
-                      disabled={isAnalyzing || !activeBlock.plan?.suggestedContent}
-                      className={`w-full h-20 rounded-[2rem] font-bold text-lg shadow-xl transition-all flex items-center justify-center gap-3 ${
-                        isAnalyzing || !activeBlock.plan?.suggestedContent
+                      onClick={handleGeneratePlanning}
+                      disabled={isAnalyzing || getSelectedCounts(activeBlock).critCount === 0}
+                      className={`inline-flex items-center gap-3 px-8 py-4 rounded-2xl font-bold text-lg shadow-xl transition-all ${
+                        isAnalyzing || getSelectedCounts(activeBlock).critCount === 0
                           ? 'bg-gray-100 text-gray-400'
                           : 'bg-primary text-white hover:bg-primary/90 shadow-primary/20'
                       }`}
                     >
                       {isAnalyzing ? (
-                        <Loader2 className="w-6 h-6 animate-spin" />
+                        <>
+                          <Loader2 className="w-6 h-6 animate-spin" />
+                          <span>Generando propuesta...</span>
+                        </>
                       ) : (
-                        <Workflow className="w-6 h-6" />
+                        <>
+                          <Sparkles className="w-6 h-6" />
+                          <span>Generar Propuesta de Contenidos</span>
+                      </>
                       )}
-                      <span>Generar secuenciación didáctica</span>
                     </button>
+                    {getSelectedCounts(activeBlock).critCount === 0 && (
+                      <p className="text-xs text-red-400 font-medium italic">Debes seleccionar al menos un criterio de evaluación en la pestaña anterior.</p>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-12">
+                  <div className="space-y-6">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Target className="w-5 h-5 text-primary" />
+                        <h3 className="text-2xl font-bold serif text-primary">Propuesta Desarrollada</h3>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <button 
+                          onClick={() => setIsEditingPlanning(!isEditingPlanning)}
+                          className={`flex items-center gap-2 px-4 py-2 rounded-xl transition-all font-bold text-[10px] uppercase tracking-widest ${
+                            isEditingPlanning 
+                              ? 'bg-primary text-white shadow-lg shadow-primary/20' 
+                              : 'text-gray-400 hover:text-primary hover:bg-primary/5'
+                          }`}
+                        >
+                          {isEditingPlanning ? (
+                            <>
+                              <Save className="w-4 h-4" />
+                              <span>Guardar cambios</span>
+                            </>
+                          ) : (
+                            <>
+                              <Edit2 className="w-4 h-4" />
+                              <span>Editar propuesta</span>
+                            </>
+                          )}
+                        </button>
+                        <button 
+                          onClick={handleRegeneratePlanning}
+                          className="text-gray-400 hover:text-purple-600 transition-colors flex items-center gap-2 px-3 py-1.5 rounded-xl hover:bg-purple-50"
+                          title="Probar otra sugerencia"
+                        >
+                          <span className="text-[10px] font-bold uppercase tracking-widest">Generar otra opción</span>
+                          <RotateCw className={`w-4 h-4 ${isAnalyzing ? 'animate-spin' : ''}`} />
+                        </button>
+                      </div>
+                    </div>
+                    <div className={`bg-white rounded-[2.5rem] border shadow-xl shadow-gray-200/50 transition-all ${isEditingPlanning ? 'p-8 border-primary/20 ring-4 ring-primary/5' : 'p-10 border-gray-100'}`}>
+                      <div className="prose prose-slate prose-sm md:prose-base max-w-none prose-headings:serif prose-headings:text-primary prose-headings:font-bold prose-p:text-gray-600 prose-li:text-gray-600">
+                        {isEditingPlanning ? (
+                          <AutoResizeTextArea
+                            value={activeBlock.plan.suggestedContent || ''}
+                            onChange={(e) => updateBlock(activeBlock.id, { 
+                              plan: { ...activeBlock.plan!, suggestedContent: e.target.value } 
+                            })}
+                            className="w-full bg-transparent border-none p-0 focus:ring-0 text-base leading-relaxed text-gray-700 min-h-[300px]"
+                            placeholder="Escribe aquí los contenidos detallados..."
+                          />
+                        ) : (
+                          <div className={`transition-opacity duration-300 ${isAnalyzing ? 'opacity-50' : 'opacity-100'}`}>
+                            <ReactMarkdown>
+                              {activeBlock.plan.suggestedContent || '_No hay contenido generado. Haz clic en "Generar otra opción" para empezar._'}
+                            </ReactMarkdown>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-center pt-8">
+                     <button
+                        onClick={handleGenerateSequencingAction}
+                        disabled={isAnalyzing || !activeBlock.plan?.suggestedContent}
+                        className={`px-12 py-5 rounded-[2rem] font-bold text-lg shadow-xl transition-all flex items-center justify-center gap-3 ${
+                          isAnalyzing || !activeBlock.plan?.suggestedContent
+                            ? 'bg-gray-100 text-gray-400'
+                            : 'bg-primary text-white hover:bg-primary/90 shadow-primary/20 hover:scale-[1.02]'
+                        }`}
+                      >
+                        {isAnalyzing ? (
+                          <Loader2 className="w-6 h-6 animate-spin" />
+                        ) : (
+                          <Workflow className="w-6 h-6" />
+                        )}
+                        <span>Confirmar propuesta y configurar sesiones</span>
+                      </button>
                   </div>
                 </div>
               )}
@@ -3139,10 +3091,233 @@ export default function App() {
                   >
                     <ChevronLeft className="w-6 h-6" />
                   </button>
-                  <h2 className="text-4xl font-bold serif text-primary">Secuenciación Didáctica</h2>
+                  <h2 className="text-4xl font-bold serif text-primary">3. Aula</h2>
                 </div>
                 <p className="text-gray-500 text-lg">Tu hoja de ruta para el aula paso a paso.</p>
               </div>
+
+              {/* Step 3: Unified Methodology and Resources Configuration */}
+              <section className="bg-white rounded-[2.5rem] p-10 border border-gray-100 shadow-xl shadow-gray-200/50 space-y-10">
+                <div className="flex items-center gap-3 border-b border-gray-100 pb-4">
+                  <Settings className="w-5 h-5 text-primary" />
+                  <h3 className="text-2xl font-bold serif text-primary">Configuración Metodológica y Recursos</h3>
+                </div>
+                
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
+                  <div className="lg:col-span-8 space-y-10">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                      <div className="space-y-4">
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Estrategias Metodológicas</label>
+                          <div className="flex flex-wrap gap-2 mb-3">
+                            {[
+                              { id: 'abp', label: 'ABP' },
+                              { id: 'coop', label: 'Cooperativo' },
+                              { id: 'gam', label: 'Gamificación' },
+                              { id: 'flipped', label: 'Flipped Classroom' },
+                              { id: 'sd', label: 'Secuencia Didáctica' },
+                              { id: 'ds', label: 'Design Thinking' }
+                            ].map(option => {
+                              const currentValue = activeBlock.plan?.methodology || '';
+                              const isSelected = currentValue.includes(option.label);
+                              return (
+                                <button
+                                  key={option.id}
+                                  onClick={() => {
+                                    let newValue = '';
+                                    if (isSelected) {
+                                      newValue = currentValue.replace(new RegExp(`\\s*${option.label}[,]?\\s*`, 'g'), '').trim();
+                                      if (newValue.endsWith(',')) newValue = newValue.slice(0, -1);
+                                      if (newValue.startsWith(',')) newValue = newValue.slice(1).trim();
+                                    } else {
+                                      newValue = currentValue ? `${currentValue}, ${option.label}` : option.label;
+                                    }
+                                    updateBlock(activeBlock.id, { 
+                                      plan: { ...activeBlock.plan!, methodology: newValue }
+                                    });
+                                  }}
+                                  className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-[10px] font-bold uppercase transition-all ${
+                                    isSelected 
+                                      ? 'bg-primary/5 border-primary/30 text-primary shadow-sm' 
+                                      : 'bg-gray-50/50 border-gray-100 text-gray-400 hover:border-gray-200'
+                                  }`}
+                                >
+                                  <div className={`w-3 h-3 rounded-full border flex items-center justify-center ${isSelected ? 'bg-primary border-primary' : 'bg-white border-gray-200'}`}>
+                                    {isSelected && <Check className="w-2 h-2 text-white stroke-[4]" />}
+                                  </div>
+                                  {option.label}
+                                </button>
+                              );
+                            })}
+                          </div>
+                          <textarea
+                            value={activeBlock.plan?.methodology || ''}
+                            onChange={(e) => updateBlock(activeBlock.id, { 
+                              plan: { ...activeBlock.plan!, methodology: e.target.value } 
+                            })}
+                            placeholder="Ej: Trabajo cooperativo, ABP, uso de TIC..."
+                            className="w-full h-40 bg-gray-50 border border-transparent rounded-2xl p-4 focus:ring-2 focus:ring-primary/10 focus:bg-white focus:border-primary/20 transition-all text-sm outline-none resize-none leading-relaxed"
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-4">
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Materiales y Recursos</label>
+                          <div className="flex flex-wrap gap-2 mb-3">
+                            {[
+                              { id: 'tabs', label: 'Dispositivos Digitales' },
+                              { id: 'digital', label: 'PDI/Panel Interactivo' },
+                              { id: 'manip', label: 'Material Manipulativo' },
+                              { id: 'library', label: 'Biblioteca' },
+                              { id: 'outdoor', label: 'Espacios Abiertos' },
+                              { id: 'ai', label: 'Herramientas IA' }
+                            ].map(option => {
+                              const currentValue = activeBlock.materials || '';
+                              const isSelected = currentValue.includes(option.label);
+                              return (
+                                <button
+                                  key={option.id}
+                                  onClick={() => {
+                                    let newValue = '';
+                                    if (isSelected) {
+                                      newValue = currentValue.replace(new RegExp(`\\s*${option.label}[,]?\\s*`, 'g'), '').trim();
+                                      if (newValue.endsWith(',')) newValue = newValue.slice(0, -1);
+                                      if (newValue.startsWith(',')) newValue = newValue.slice(1).trim();
+                                    } else {
+                                      newValue = currentValue ? `${currentValue}, ${option.label}` : option.label;
+                                    }
+                                    updateBlock(activeBlock.id, { materials: newValue });
+                                  }}
+                                  className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-[10px] font-bold uppercase transition-all ${
+                                    isSelected 
+                                      ? 'bg-purple-50 border-purple-200 text-purple-600 shadow-sm' 
+                                      : 'bg-gray-50/50 border-gray-100 text-gray-400 hover:border-gray-200'
+                                  }`}
+                                >
+                                  <div className={`w-3 h-3 rounded-full border flex items-center justify-center ${isSelected ? 'bg-purple-500 border-purple-500' : 'bg-white border-gray-200'}`}>
+                                    {isSelected && <Check className="w-2 h-2 text-white stroke-[4]" />}
+                                  </div>
+                                  {option.label}
+                                </button>
+                              );
+                            })}
+                          </div>
+                          <textarea
+                            value={activeBlock.materials || ''}
+                            onChange={(e) => updateBlock(activeBlock.id, { materials: e.target.value })}
+                            placeholder="Ej: Tengo tabletas para todos, materiales impresos..."
+                            className="w-full h-40 bg-gray-50 border border-transparent rounded-2xl p-4 focus:ring-2 focus:ring-primary/10 focus:bg-white focus:border-primary/20 transition-all text-sm outline-none resize-none leading-relaxed"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="lg:col-span-4 space-y-8">
+                    <div className="space-y-4">
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Número de Sesiones</label>
+                          <select
+                            value={activeBlock.plan?.numberOfSessions || 4}
+                            onChange={(e) => updateBlock(activeBlock.id, { 
+                              plan: { ...activeBlock.plan!, numberOfSessions: parseInt(e.target.value) } 
+                            })}
+                            className="w-full bg-gray-50 border border-transparent rounded-xl p-3 focus:ring-2 focus:ring-primary/10 focus:bg-white focus:border-primary/20 transition-all text-sm outline-none font-bold text-primary appearance-none cursor-pointer"
+                          >
+                            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(num => (
+                              <option key={num} value={num}>{num} {num === 1 ? 'Sesión' : 'Sesiones'}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Nº Actividades (Total)</label>
+                          <select
+                            value={activeBlock.plan?.numberOfActivities || 8}
+                            onChange={(e) => updateBlock(activeBlock.id, { 
+                              plan: { ...activeBlock.plan!, numberOfActivities: parseInt(e.target.value) } 
+                            })}
+                            className="w-full bg-gray-50 border border-transparent rounded-xl p-3 focus:ring-2 focus:ring-primary/10 focus:bg-white focus:border-primary/20 transition-all text-sm outline-none font-bold text-primary appearance-none cursor-pointer"
+                          >
+                            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(num => (
+                              <option key={num} value={num}>{num} {num === 1 ? 'Actividad' : 'Actividades'}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Duración (Minutos/Sesión)</label>
+                          <div className="relative">
+                            <input 
+                              type="number"
+                              min="1"
+                              value={activeBlock.plan?.sessionDuration || 60}
+                              onChange={(e) => updateBlock(activeBlock.id, {
+                                plan: { ...activeBlock.plan!, sessionDuration: parseInt(e.target.value) || 0 }
+                              })}
+                              className="w-full bg-gray-50 border border-transparent rounded-xl p-3 focus:ring-2 focus:ring-primary/10 focus:bg-white focus:border-primary/20 transition-all text-sm outline-none font-bold text-primary"
+                            />
+                            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] font-bold text-gray-400 uppercase">min</span>
+                          </div>
+                        </div>
+                    </div>
+
+                    <div className="space-y-4">
+                        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Modalidad Producto Final</label>
+                        <div className="space-y-3">
+                          <button
+                            onClick={() => updateBlock(activeBlock.id, { 
+                              plan: { ...activeBlock.plan!, finalProductMode: 'cumulative' } 
+                            })}
+                            className={`w-full p-4 rounded-2xl border text-left transition-all ${
+                              activeBlock.plan?.finalProductMode === 'cumulative'
+                                ? 'bg-primary/5 border-primary shadow-sm'
+                                : 'bg-transparent border-gray-100 hover:border-gray-200'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className={`text-[10px] font-bold uppercase ${activeBlock.plan?.finalProductMode === 'cumulative' ? 'text-primary' : 'text-gray-400'}`}>Acumulativo</span>
+                              <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${activeBlock.plan?.finalProductMode === 'cumulative' ? 'border-primary bg-primary' : 'border-gray-200'}`}>
+                                {activeBlock.plan?.finalProductMode === 'cumulative' && <Check className="w-2.5 h-2.5 text-white stroke-[4]" />}
+                              </div>
+                            </div>
+                            <p className="text-[10px] text-gray-400 mt-1 italic leading-tight">Suma de las tareas realizadas durante la situación.</p>
+                          </button>
+                          
+                          <button
+                            onClick={() => updateBlock(activeBlock.id, { 
+                              plan: { ...activeBlock.plan!, finalProductMode: 'recopilatory' } 
+                            })}
+                            className={`w-full p-4 rounded-2xl border text-left transition-all ${
+                              activeBlock.plan?.finalProductMode === 'recopilatory'
+                                ? 'bg-primary/5 border-primary shadow-sm'
+                                : 'bg-transparent border-gray-100 hover:border-gray-200'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className={`text-[10px] font-bold uppercase ${activeBlock.plan?.finalProductMode === 'recopilatory' ? 'text-primary' : 'text-gray-400'}`}>Recopilatorio</span>
+                              <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${activeBlock.plan?.finalProductMode === 'recopilatory' ? 'border-primary bg-primary' : 'border-gray-200'}`}>
+                                {activeBlock.plan?.finalProductMode === 'recopilatory' && <Check className="w-2.5 h-2.5 text-white stroke-[4]" />}
+                              </div>
+                            </div>
+                            <p className="text-[10px] text-gray-400 mt-1 italic leading-tight">Una actividad nueva que sintetiza todo lo aprendido.</p>
+                          </button>
+                        </div>
+                      </div>
+                  </div>
+                </div>
+                
+                <div className="pt-8 border-t border-gray-50 flex justify-end">
+                  <button
+                    onClick={handleGenerateSequencingAction}
+                    disabled={isAnalyzing}
+                    className="flex items-center gap-3 px-8 py-4 bg-purple-600 text-white rounded-2xl font-bold uppercase tracking-widest text-xs hover:bg-purple-700 shadow-xl shadow-purple-200 transition-all disabled:opacity-50"
+                  >
+                    {isAnalyzing ? <Loader2 className="w-5 h-5 animate-spin" /> : <RefreshCcw className="w-5 h-5" />}
+                    <span>Actualizar Secuenciación aula</span>
+                  </button>
+                </div>
+              </section>
 
               <div className="space-y-8">
                 {/* Justification Card */}
@@ -3380,6 +3555,123 @@ export default function App() {
               
               <div className="flex justify-center pt-8 border-t border-gray-100">
                 <button
+                  onClick={() => updateBlock(activeBlock.id, { step: 'diversity' })}
+                  className="px-8 py-3 bg-primary text-white rounded-2xl font-bold uppercase tracking-widest hover:scale-105 transition-all shadow-lg shadow-primary/20 flex items-center gap-2"
+                >
+                  Atención a la Diversidad <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          ) : activeBlock.step === 'diversity' ? (
+            <div className="max-w-4xl mx-auto space-y-12 py-8 pb-32">
+              <div className="space-y-4">
+                <div className="flex items-center gap-4">
+                  <button 
+                    onClick={() => updateBlock(activeBlock.id, { step: 'sequencing' })}
+                    className="p-2 hover:bg-gray-100 rounded-full text-gray-400"
+                  >
+                    <ChevronLeft className="w-6 h-6" />
+                  </button>
+                  <h2 className="text-4xl font-bold serif text-primary">4. Diversidad</h2>
+                </div>
+                <p className="text-gray-500 text-lg">Adaptaciones y medidas para atender a todo el alumnado.</p>
+              </div>
+
+              {/* General Diversity Measures */}
+              <div className="bg-white rounded-[2.5rem] p-10 space-y-8 border border-gray-100 shadow-xl shadow-gray-200/50">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Sparkles className="w-6 h-6 text-accent" />
+                    <h3 className="text-xl font-bold serif text-primary">Enfoque DUA</h3>
+                  </div>
+                  <button
+                    onClick={() => handleGenerateDiversityAction("[DUA_GENERAL] Medidas DUA generales. Centradas puramente en diseño universal para el aprendizaje. IGNORA cualquier etiqueta de discapacidad (TEA, TDAH, etc.) o categorías específicas de alumnado. Solo medidas pedagógicas DUA.")}
+                    disabled={isAnalyzing}
+                    className="flex items-center gap-2 px-6 py-3 bg-accent text-white rounded-2xl font-bold uppercase tracking-widest text-[10px] shadow-lg shadow-accent/20 hover:scale-105 transition-all text-center"
+                  >
+                    {isAnalyzing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCcw className="w-4 h-4" />}
+                    <span>{activeBlock.diversity ? 'Regenerar Medidas' : 'Generar Medidas DUA'}</span>
+                  </button>
+                </div>
+
+                {!activeBlock.diversity || activeBlock.diversity.measures.length === 0 ? (
+                  <div className="p-12 text-center border-2 border-dashed border-gray-200 rounded-3xl space-y-4">
+                    <Users2 className="w-12 h-12 text-gray-300 mx-auto" />
+                    <p className="text-sm text-gray-400 italic">No hay medidas generales generadas aún. La IA puede proponerte medidas DUA basadas en tu secuenciación.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-6">
+                    {activeBlock.diversity.measures.map((m, idx) => (
+                      <div key={m.id || idx} className="p-6 bg-gray-50 rounded-2xl border border-gray-100 space-y-3">
+                         <p className="text-sm text-gray-700 font-bold leading-relaxed">{m.measure}</p>
+                         <div className="pt-2 border-t border-gray-200/50">
+                            <p className="text-[11px] text-gray-500 italic"><span className="font-bold opacity-50 not-italic uppercase text-[9px] mr-1">Metodología:</span> {m.methodologyAdjustments}</p>
+                         </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Group-Specific Adaptations */}
+              {activeBlock.selectedGroupIds && activeBlock.selectedGroupIds.length > 0 && (
+                <div className="space-y-6">
+                  <div className="flex items-center gap-3 px-2">
+                    <Users2 className="w-5 h-5 text-primary" />
+                    <h3 className="text-lg font-bold serif text-primary">Adaptaciones para Grupos Asignados</h3>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 gap-6">
+                    {activeBlock.selectedGroupIds.map(gid => {
+                      const group = studentGroups.find(g => g.id === gid);
+                      if (!group) return null;
+                      const div = activeBlock.groupDiversity?.[gid];
+
+                      return (
+                        <div key={gid} className="bg-white rounded-[2rem] border border-gray-100 shadow-lg p-8 space-y-6 overflow-hidden relative">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <h4 className="font-bold text-primary text-sm uppercase tracking-widest">{group.course} {group.letter}</h4>
+                              <p className="text-[10px] text-gray-400 mt-1">{group.school}</p>
+                            </div>
+                            <button
+                              onClick={() => handleGenerateDiversityAction("[ADAPTACION_ESPECIFICA] " + group.needsDescription, group.id, activeBlock.id)}
+                              disabled={isAnalyzing}
+                              className="flex items-center gap-2 px-4 py-2 bg-primary/5 text-primary rounded-xl font-bold uppercase tracking-widest text-[9px] hover:bg-primary/10 transition-all"
+                            >
+                              {isAnalyzing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                              {div ? 'Regenerar' : 'Generar Adaptación'}
+                            </button>
+                          </div>
+
+                          {!div ? (
+                            <div className="p-6 bg-gray-50 rounded-2xl border border-dashed border-gray-200 text-center">
+                              <p className="text-[11px] text-gray-400 italic">No hay adaptaciones específicas para este grupo.</p>
+                            </div>
+                          ) : (
+                            <div className="space-y-4">
+                              <div className="p-4 bg-primary/5 rounded-2xl border border-primary/10">
+                                <p className="text-[10px] text-primary/70 italic leading-relaxed">{div.generalObservations}</p>
+                              </div>
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-left">
+                                {div.measures.map((m, i) => (
+                                  <div key={m.id || i} className="p-4 bg-gray-50 rounded-2xl border border-gray-100 space-y-2">
+                                    <span className="text-[8px] font-bold text-gray-400 uppercase tracking-tighter">{m.type}</span>
+                                    <p className="text-[11px] text-gray-600 font-medium leading-tight">{m.measure}</p>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              <div className="flex justify-center pt-8 border-t border-gray-100">
+                <button
                   onClick={() => updateBlock(activeBlock.id, { step: 'evaluation' })}
                   className="px-8 py-3 bg-primary text-white rounded-2xl font-bold uppercase tracking-widest hover:scale-105 transition-all shadow-lg shadow-primary/20 flex items-center gap-2"
                 >
@@ -3392,12 +3684,12 @@ export default function App() {
               <div className="space-y-4">
                 <div className="flex items-center gap-4">
                   <button 
-                    onClick={() => updateBlock(activeBlock.id, { step: 'sequencing' })}
+                    onClick={() => updateBlock(activeBlock.id, { step: 'diversity' })}
                     className="p-2 hover:bg-gray-100 rounded-full text-gray-400"
                   >
                     <ChevronLeft className="w-6 h-6" />
                   </button>
-                  <h2 className="text-4xl font-bold serif text-primary">Instrumentos de Evaluación</h2>
+                  <h2 className="text-4xl font-bold serif text-primary">5. Evaluación</h2>
                 </div>
                 <p className="text-gray-500 text-lg">Concreción de herramientas para valorar el aprendizaje.</p>
               </div>
@@ -3408,7 +3700,7 @@ export default function App() {
                     <ClipboardList className="w-10 h-10 text-accent" />
                   </div>
                   <div className="space-y-2">
-                    <h3 className="text-2xl font-bold text-primary">¿Cómo vamos a evaluar?</h3>
+                    <h3 className="text-2xl font-bold serif text-primary">¿Cómo vamos a evaluar?</h3>
                     <p className="text-gray-500 max-w-md mx-auto">La IA analizará tus actividades y te propondrá los mejores instrumentos para cada una.</p>
                   </div>
 
@@ -3482,55 +3774,16 @@ export default function App() {
                           </p>
                         </div>
 
-                        <div className="mt-auto pt-6 flex items-center justify-between border-t border-gray-50">
-                           <div className="flex items-center gap-2">
+                        <div className="mt-auto pt-6 flex items-center justify-end border-t border-gray-50">
                              <button 
                                onClick={(e) => {
                                  e.stopPropagation();
                                  setEditingInstrument(inv);
                                }}
-                               className="p-3 bg-gray-50 text-gray-400 hover:text-accent hover:bg-accent/5 rounded-2xl transition-all"
-                               title="Configurar y Editar"
+                               className="px-6 py-2.5 bg-primary/5 text-primary hover:bg-primary hover:text-white rounded-2xl text-[10px] font-bold uppercase tracking-widest transition-all flex items-center gap-2"
                              >
-                               <Settings2 className="w-5 h-5" />
+                               <Eye className="w-4 h-4" /> Detalles
                              </button>
-                             {inv.content && (
-                               <button 
-                                 onClick={(e) => {
-                                   e.stopPropagation();
-                                   handleExportIndividualInstrument(inv);
-                                 }}
-                                 className="p-3 bg-gray-50 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-2xl transition-all"
-                                 title="Descargar PDF"
-                               >
-                                 <Download className="w-5 h-5" />
-                               </button>
-                             )}
-                           </div>
-                           
-                           {inv.content ? (
-                             <button 
-                               onClick={(e) => {
-                                 e.stopPropagation();
-                                 setEditingInstrument(inv);
-                               }}
-                               className="px-5 py-2.5 bg-primary text-white rounded-2xl text-[10px] font-bold uppercase tracking-widest hover:bg-accent transition-all flex items-center gap-2 shadow-lg shadow-primary/10"
-                             >
-                               <Eye className="w-4 h-4" /> Visualizar
-                             </button>
-                           ) : (
-                             <button 
-                               onClick={(e) => {
-                                 e.stopPropagation();
-                                 handleGenerateRealInstrument(inv);
-                               }}
-                               disabled={isGenerating === inv.id}
-                               className="px-5 py-2.5 bg-accent text-white rounded-2xl text-[10px] font-bold uppercase tracking-widest hover:scale-105 transition-all flex items-center gap-2 shadow-lg shadow-accent/20 disabled:opacity-50"
-                             >
-                               {isGenerating === inv.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-                               Generar Real
-                             </button>
-                           )}
                         </div>
                       </motion.div>
                     ))}
@@ -3573,14 +3826,14 @@ export default function App() {
                     >
                       <ChevronLeft className="w-6 h-6" />
                     </button>
-                    <h2 className="text-4xl font-bold serif text-primary">Evaluación de la Práctica Docente</h2>
+                    <h2 className="text-4xl font-bold serif text-primary">6. Práctica Docente</h2>
                   </div>
                   <button
                     onClick={async () => {
                       setIsGenerating('reflection');
                       const unitTitle = activeBlock.title || 'Esta Situación de Aprendizaje';
                       const activities = activeBlock.activities || [];
-                      const content = activeBlock.suggestedContent || '';
+                      const content = activeBlock.plan?.suggestedContent || '';
                       const categories = [
                         { id: 'materiaResults', label: 'Resultados de la materia' },
                         { id: 'metodosPedagogicos', label: 'Métodos didácticos' },
@@ -3738,41 +3991,43 @@ export default function App() {
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
-              className="space-y-12 pb-24"
+              className="max-w-4xl mx-auto space-y-12 pb-24"
             >
-              {/* Materials Section Integrated */}
+              <div className="space-y-4">
+                <h2 className="text-4xl font-bold serif text-primary">1. Situación</h2>
+                <p className="text-gray-500 text-lg">Selecciona los elementos curriculares para tu situación.</p>
+              </div>
+
+              {/* Preferences Box at Top of Selection - Visible and Sticky-like (first in scroll) */}
               <section className="bg-white rounded-3xl border border-blue-100 shadow-xl shadow-blue-500/5 overflow-hidden">
-                <div className="p-6 border-b border-blue-50 bg-blue-50/30 flex items-center justify-between">
+                <div className="p-4 border-b border-blue-50 bg-blue-50/30 flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <FileText className="w-5 h-5 text-blue-500" />
-                    <div>
-                      <h3 className="font-bold text-blue-900">Tus Materiales e Ideas</h3>
-                      <p className="text-[10px] text-blue-600 font-medium uppercase tracking-widest">Punto de partida y guía para la IA</p>
-                    </div>
+                    <FileText className="w-4 h-4 text-blue-500" />
+                    <h3 className="font-bold text-[10px] text-blue-900 uppercase tracking-widest">Tus Materiales e Ideas (Preferencias Iniciales)</h3>
                   </div>
-                  <button
-                    onClick={handleAnalyzeContent}
-                    disabled={isAnalyzing || !activeBlock.materials}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-[10px] uppercase tracking-widest transition-all ${
-                      isAnalyzing || !activeBlock.materials
-                        ? 'bg-gray-100 text-gray-400'
-                        : 'bg-blue-500 text-white hover:bg-blue-600 shadow-lg shadow-blue-500/20'
-                    }`}
-                  >
-                    {isAnalyzing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
-                    Sincronizar Currículo
-                  </button>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={handleAnalyzeContent}
+                      disabled={isAnalyzing || !activeBlock.materials}
+                      className={`flex items-center gap-2 px-3 py-1 rounded-lg font-bold text-[8px] uppercase tracking-widest transition-all ${
+                        isAnalyzing || !activeBlock.materials
+                          ? 'bg-gray-100 text-gray-400'
+                          : 'bg-blue-500 text-white hover:bg-blue-600 shadow-lg shadow-blue-500/20'
+                      }`}
+                    >
+                      {isAnalyzing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                      Sincronizar Currículo
+                    </button>
+                    <p className="text-[10px] text-blue-300 italic">La IA usará esto para guiarte</p>
+                  </div>
                 </div>
                 <div className="p-6">
                   <AutoResizeTextArea
                     value={activeBlock.materials || ''}
                     onChange={(e) => updateBlock(activeBlock.id, { materials: e.target.value })}
-                    placeholder="Escribe aquí tus ideas, describe tus materiales o lo que quieres conseguir. La IA lo usará para sugerirte el mejor currículo y diseñar la propuesta."
-                    className="w-full bg-transparent border-none p-0 focus:ring-0 text-sm text-gray-700 min-h-[80px]"
+                    placeholder="Describe tus materiales o ideas iniciales..."
+                    className="w-full bg-transparent border-none p-0 focus:ring-0 text-sm text-gray-700 min-h-[60px]"
                   />
-                  <div className="mt-4 pt-4 border-t border-blue-50 flex items-center justify-between">
-                     <p className="text-[10px] text-gray-400 italic">Los cambios en este texto influirán en las sugerencias de las siguientes pestañas.</p>
-                  </div>
                 </div>
               </section>
 
@@ -3780,7 +4035,7 @@ export default function App() {
               <section className="space-y-6">
                 <div className="flex items-center justify-between border-b border-gray-200 pb-4">
                   <div>
-                    <h2 className="text-2xl font-bold tracking-tight serif">Competencias y Criterios</h2>
+                    <h2 className="text-2xl font-bold serif text-primary">Competencias y Criterios</h2>
                     <p className="text-sm text-gray-500">Selecciona los elementos que trabajarás en esta situación.</p>
                   </div>
                 </div>
@@ -3794,13 +4049,28 @@ export default function App() {
                         </div>
                         <div className="flex-1">
                           <p className="font-medium text-lg leading-snug text-gray-800">
-                            {ce.description}
+                            {(() => {
+                              const match = ce.description.match(/^(\d+)\.\s*(.*)/);
+                              const compNum = match ? match[1] : '';
+                              const cleanDescription = match ? match[2] : ce.description;
+                              const courseNum = (() => {
+                                const n = activeBlock.level.match(/\d+/)?.[0] || activeBlock.level;
+                                if (activeBlock.stage === 'Infantil') {
+                                  if (n === '3') return '1';
+                                  if (n === '4') return '2';
+                                  if (n === '5') return '3';
+                                }
+                                return n;
+                              })();
+                              const prefix = `REL.${courseNum}`;
+                              return `${prefix}${compNum ? `.${compNum}.` : '.'} ${cleanDescription}`;
+                            })()}
                           </p>
                         </div>
                       </div>
 
                       <div className="p-1">
-                        {ce.criteriosEvaluación.map(crit => (
+                        {ce.criteriosEvaluación.map((crit, critIdx) => (
                           <div 
                             key={crit.id} 
                             onClick={() => toggleElementSelection(activeBlock.id, 'criterio', ce.id, crit.id)}
@@ -3821,7 +4091,26 @@ export default function App() {
                               <p className={`text-sm font-semibold leading-relaxed transition-colors ${
                                 crit.selected ? 'text-blue-900' : 'text-gray-700'
                               }`}>
-                                {crit.description}
+                                {(() => {
+                                  const match = crit.description.match(/^(\d+(\.\d+)*)\.?\s*(.*)/);
+                                  const cleanDescription = match ? match[3] : crit.description;
+                                  
+                                  const courseNum = (() => {
+                                    const n = activeBlock.level.match(/\d+/)?.[0] || activeBlock.level;
+                                    if (activeBlock.stage === 'Infantil') {
+                                      if (n === '3') return '1';
+                                      if (n === '4') return '2';
+                                      if (n === '5') return '3';
+                                    }
+                                    return n;
+                                  })();
+                                  
+                                  // Extract competence number
+                                  const compMatch = ce.description.match(/^(\d+)\./);
+                                  const compNum = compMatch ? compMatch[1] : '1';
+                                  
+                                  return `REL.${courseNum}.${compNum}.1. ${cleanDescription}`;
+                                })()}
                               </p>
                             </div>
                           </div>
@@ -3999,9 +4288,22 @@ export default function App() {
                                     </button>
                                   </div>
 
-                                  {!groupDiversity ? (
+                                  {!block.initialized ? (
+                                    <div className="space-y-4">
+                                      <p className="text-[10px] text-amber-600 bg-amber-50 p-3 rounded-xl font-medium leading-relaxed border border-amber-100 italic">
+                                        Esta Situación de Aprendizaje aún no ha sido diseñada. Debes entrar en ella para configurarla antes de generar adaptaciones para el grupo.
+                                      </p>
+                                      <button 
+                                        onClick={() => { setActiveBlockId(block.id); setActiveGroupId(null); }}
+                                        className="w-full py-4 bg-primary text-white rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-primary/90 transition-all flex items-center justify-center gap-2 shadow-lg shadow-primary/20"
+                                      >
+                                        <Plus className="w-4 h-4" />
+                                        Diseñar SdA
+                                      </button>
+                                    </div>
+                                  ) : !groupDiversity ? (
                                     <button
-                                      onClick={() => handleGenerateDiversityAction(group.needsDescription, group.id)}
+                                      onClick={() => handleGenerateDiversityAction("[ADAPTACION_ESPECIFICA] " + group.needsDescription, group.id, block.id)}
                                       disabled={isAnalyzing}
                                       className="w-full py-4 bg-primary/5 text-primary rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-primary/10 transition-all flex items-center justify-center gap-2"
                                     >
@@ -4015,7 +4317,7 @@ export default function App() {
                                           <CheckCircle2 className="w-3 h-3" /> Adaptaciones Generadas
                                         </p>
                                         <button 
-                                          onClick={() => handleGenerateDiversityAction(group.needsDescription, group.id)}
+                                          onClick={() => handleGenerateDiversityAction("[ADAPTACION_ESPECIFICA] " + group.needsDescription, group.id, block.id)}
                                           disabled={isAnalyzing}
                                           className="text-[9px] font-bold text-gray-400 hover:text-primary underline uppercase tracking-widest"
                                         >
@@ -4025,7 +4327,7 @@ export default function App() {
                                       <div className="space-y-2">
                                         {groupDiversity.measures.slice(0, 3).map((m, i) => (
                                           <div key={i} className="text-[10px] bg-gray-50 p-2 rounded-xl text-gray-500 border border-gray-100">
-                                            <span className="font-bold text-primary">{m.type}:</span> {m.measure.substring(0, 80)}...
+                                            {m.measure.substring(0, 80)}...
                                           </div>
                                         ))}
                                       </div>
@@ -4041,12 +4343,15 @@ export default function App() {
                               );
                             })}
                             
-                            <div className="bg-gray-200/20 rounded-[2rem] border-2 border-dashed border-gray-200 p-6 flex flex-col items-center justify-center text-center gap-3 group hover:border-primary/30 transition-all">
-                               <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center text-gray-300 group-hover:text-primary shadow-sm transition-all">
-                                 <Plus className="w-5 h-5" />
+                            <div className="bg-gray-50 rounded-[2rem] border-2 border-dashed border-gray-200 p-8 flex flex-col items-center justify-center text-center gap-4 group hover:border-primary/30 transition-all">
+                               <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-gray-300 group-hover:text-primary shadow-sm transition-all rotate-3 group-hover:rotate-0">
+                                 <Plus className="w-6 h-6" />
                                </div>
-                               <div className="space-y-2 w-full">
-                                 <p className="text-xs font-bold text-gray-400 group-hover:text-primary transition-colors uppercase tracking-widest">Asignar SdA</p>
+                               <div className="space-y-3 w-full">
+                                 <div>
+                                   <p className="text-xs font-bold text-gray-500 group-hover:text-primary transition-colors uppercase tracking-widest">Asignar SdA al Grupo</p>
+                                   <p className="text-[10px] text-gray-400 mt-1 italic">SdA de {group.course} ({group.stage})</p>
+                                 </div>
                                  <select 
                                    onChange={(e) => {
                                      const blockId = e.target.value;
@@ -4060,12 +4365,17 @@ export default function App() {
                                      }
                                    }}
                                    value=""
-                                   className="text-[10px] font-bold bg-white border border-gray-100 rounded-xl p-3 w-full focus:ring-2 focus:ring-primary/10 outline-none cursor-pointer uppercase tracking-wider text-gray-500"
+                                   className="text-[10px] font-bold bg-white border border-gray-100 rounded-xl p-3 w-full focus:ring-2 focus:ring-primary/10 outline-none cursor-pointer uppercase tracking-wider text-gray-500 shadow-sm"
                                  >
-                                   <option value="">Selecciona una SdA...</option>
-                                   {blocks.filter(b => !b.selectedGroupIds?.includes(group.id)).map(b => (
+                                   <option value="">Selecciona una SdA compatible...</option>
+                                   {blocks
+                                     .filter(b => !b.selectedGroupIds?.includes(group.id) && b.stage === group.stage && b.level === group.course)
+                                     .map(b => (
                                      <option key={b.id} value={b.id}>{b.title || `SdA ${b.id.substring(0, 5)}`}</option>
                                    ))}
+                                   {blocks.filter(b => !b.selectedGroupIds?.includes(group.id) && b.stage === group.stage && b.level === group.course).length === 0 && (
+                                     <option disabled>No hay más SdA diseñadas para {group.course}</option>
+                                   )}
                                  </select>
                                </div>
                             </div>
@@ -4365,13 +4675,7 @@ export default function App() {
                       className="px-10 py-4 bg-accent text-white rounded-2xl font-bold uppercase tracking-widest text-[11px] shadow-xl shadow-accent/20 hover:scale-105 active:scale-95 transition-all flex items-center gap-3 mx-auto"
                     >
                       {isImprovingInstrument ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />}
-                      Diseñar ahora con IA
-                    </button>
-                    <button 
-                      onClick={handleCopyManualPrompt}
-                      className="text-[10px] font-bold text-accent uppercase tracking-widest hover:underline flex items-center gap-2"
-                    >
-                      <Copy className="w-3 h-3" /> {copiedId === 'manual-prompt' ? '¡Copiado!' : 'Copiar Prompt para Gemini (Manual)'}
+                      Generar Instrumento con IA
                     </button>
                   </div>
                 </div>

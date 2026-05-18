@@ -21,11 +21,13 @@ export interface UnitPlan {
   suggestedContent: string;
   justification?: string;
   methodology: string;
-  finalProductMode: 'cumulative' | 'compilatory';
+  finalProductMode: 'cumulative' | 'recopilatory';
   finalProductTitle?: string;
   finalProductDescription?: string;
   finalProduct: string;
   numberOfActivities?: number;
+  numberOfSessions?: number;
+  sessionDuration?: number;
 }
 
 export interface EvaluationInstrument {
@@ -88,7 +90,7 @@ export interface CurriculumBlock {
   stage: 'Infantil' | 'Primaria' | 'Secundaria' | 'Bachillerato';
   level: string; 
   initialized?: boolean;
-  step: 'selection' | 'planning' | 'sequencing' | 'evaluation' | 'docente_eval';
+  step: 'selection' | 'planning' | 'sequencing' | 'diversity' | 'evaluation' | 'docente_eval';
   creationMode?: 'curriculum' | 'content';
   materials?: string; 
   competenciasEspecíficas: Competencia[];

@@ -146,9 +146,15 @@ export async function suggestUnitContent(
   
   Propón un desarrollo de contenidos específicos para esta Situación de Aprendizaje.
   
-  ATENCIÓN: Responde ÚNICAMENTE con los contenidos específicos (saberes básicos aterrizados). NO incluyas justificación, NO incluyas producto final, NO incluyas introducción.
+  ATENCIÓN: Responde ÚNICAMENTE con los contenidos específicos (saberes básicos aterrizados). NO incluas justificación, NO incluyas producto final, NO incluyas introducción.
   Asegúrate de que la propuesta sea fiel a las ideas iniciales del docente pero con el rigor curricular necesario.
-  Responde con el texto propuesto directamente en un formato de lista claro.`;
+  
+  ESTILO Y FORMATO:
+  - Usa una estructura profesional con titulares (Markdown ##) para separar bloques temáticos o dimensiones.
+  - Usa listas con viñetas para los saberes aterrizados.
+  - Usa negritas (**término**) para destacar conceptos clave.
+  - El tono debe ser técnico-pedagógico pero legible.
+  - NO devuelvas bloques de código markdown (\`\`\`markdown), solo el texto enriquecido directamente.`;
 
   try {
     const response = await ai.models.generateContent({
@@ -166,7 +172,7 @@ export async function generateSequencing(
   curriculum: string,
   content: string,
   methodology: string,
-  productMode: 'cumulative' | 'compilatory',
+  productMode: 'cumulative' | 'recopilatory',
   numSessions: number = 5
 ): Promise<{ activities: Activity[], finalProductTitle: string, finalProductDescription: string, finalProduct: string, justification: string }> {
   const ai = await getAI();
@@ -177,7 +183,7 @@ export async function generateSequencing(
   CURRÍCULO: ${curriculum}
   CONTENIDOS SELECCIONADOS: ${content}
   METODOLOGÍA: ${methodology}
-  MODO PRODUCTO FINAL: ${productMode === 'cumulative' ? 'Acumulativo (suma de las actividades)' : 'Compilatorio (actividad final de síntesis)'}
+  MODO PRODUCTO FINAL: ${productMode === 'cumulative' ? 'Acumulativo (suma de las actividades)' : 'Recopilatorio (actividad final de síntesis)'}
  
   Necesito que generes:
   1. Una JUSTIFICACIÓN pedagógica breve y motivadora de la situación de aprendizaje.
@@ -194,9 +200,9 @@ export async function generateSequencing(
  
   Responde ÚNICAMENTE con un objeto JSON (sin bloques markdown) con este formato:
   {
-    "justification": "texto de la justificación",
+    "justification": "texto de la justificación (usa Markdown para negritas y énfasis)",
     "finalProductTitle": "título motivador del producto final",
-    "finalProductDescription": "descripción detallada de lo que harán en el producto",
+    "finalProductDescription": "descripción detallada de lo que harán en el producto (puedes usar listas Markdown)",
     "finalProduct": "resumen corto del producto",
     "activities": [
       {
@@ -302,7 +308,7 @@ export async function regenerateFinalProduct(
   CONTENIDO: ${content}
   ACTIVIDADES PREVIAS: ${activities.map(a => a.title).join(', ')}
   METODOLOGÍA: ${methodology}
-  MODO: ${productMode === 'cumulative' ? 'Acumulativo (suma de las actividades)' : 'Compilatorio (actividad final de síntesis)'}
+  MODO: ${productMode === 'cumulative' ? 'Acumulativo (suma de las actividades)' : 'Recopilatorio (actividad final de síntesis)'}
   
   Responde ÚNICAMENTE con un objeto JSON (sin bloques markdown) con este formato:
   {
@@ -440,17 +446,35 @@ export async function generateDiversityMeasures(
   const ai = await getAI();
   if (!ai) return { measures: [] };
 
+  const isDuaGeneral = needs.includes("[DUA_GENERAL]") || needs.toUpperCase().includes("DUA");
+  const isAdaptacionEspecífica = needs.includes("[ADAPTACION_ESPECIFICA]");
+  
   const prompt = `Actúa como especialista en Atención a la Diversidad y Religión Católica.
   Tengo una situación de aprendizaje con estas actividades:
-  ${activities.map((a, i) => `Actividad ${i+1}: ${a.title}`).join('\n')}
+  ${activities.map((a, i) => `Actividad ${i+1}: ${a.title}: ${a.description}`).join('\n')}
   
-  Y estas necesidades específicas identificadas por el docente: "${needs}"
+  Y las siguientes necesidades/contexto a abordar: "${needs.replace(/\[.*?\]/g, '').trim()}"
   
-  Propón medidas concretas de atención a la diversidad (DUA, adaptaciones no significativas, multinivel, etc.) adaptadas a estas necesidades para que todos los alumnos puedan alcanzar los objetivos.
+  Propón medidas concretas de atención a la diversidad adaptadas a esta situación para que todos los alumnos puedan participar y aprender.
+  
+  ${isDuaGeneral ? 
+    `MODO: "DISEÑO UNIVERSAL PARA EL APRENDIZAJE (DUA)"
+    - REGLA DE ORO: Propón ÚNICAMENTE medidas preventivas de diseño universal (DUA).
+    - PROHIBIDO: Mencionar diagnósticos (TEA, TDAH, etc.) o nombres de alumnos. 
+    - OBJETIVO: Crear un entorno flexible donde NO hagan falta adaptaciones posteriores porque el diseño ya es accesible para todos.` :
+    `MODO: "ADAPTACIONES ESPECÍFICAS PARA EL GRUPO"
+    - REGLA DE ORO: Propón ÚNICAMENTE adaptaciones que MODIFIQUEN o ALTEREN la situación de aprendizaje para ajustarla al perfil concreto descrito (TEA, TDAH, nivel de idioma, discapacidad, etc.).
+    - ESPECIFICIDAD: Para cada medida, indica claramente si es una medida para TODO EL GRUPO (basada en su contexto) o para un ALUMNO/S CONCRETOS (ej: "Para Juan (TEA)...", "Para el alumnado de Compensatoria...").
+    - PROHIBIDO: Mencionar pautas DUA generales (ej: no digas "presentar la información con vídeos", eso es DUA).
+    - QUÉ BUSCO: Medidas de acceso o de adaptación curricular no significativa específicas. Ej: "Para el alumno con TDAH, fragmentar la descripción de la actividad 2 en 4 pasos numerados y check-list físico", "Para el alumno TEA, anticipar con pictogramas el final de la actividad 3".
+    - PREMISA: El docente ya aplica DUA en general, aquí buscamos lo que va MÁS ALLÁ del DUA para alumnos con necesidades declaradas.`
+  }
   
   Detalla para cada medida:
-  1. Tipo (TEA, TDAH, Alta Capacidad, Discapacidad, Otro)
-  2. Necesidad específica
+  1. Tipo:
+     - Si es DUA: Simplemente "DUA".
+     - Si es Adaptación Específica: Pon "Adaptación Específica" seguido de a quién va dirigida (ej: "Adaptación Específica: General Grupo" o "Adaptación Específica: Para [Nombre Alumno]").
+  2. Necesidad o ámbito que aborda
   3. Medida concreta
   4. Ajustes metodológicos específicos para las actividades mencionadas.
   
@@ -458,8 +482,8 @@ export async function generateDiversityMeasures(
   {
     "measures": [
       {
-        "type": "TEA | TDAH | Alta Capacidad | Discapacidad | Otro",
-        "need": "descripción de la necesidad",
+        "type": "tipo de medida detallado",
+        "need": "descripción de la necesidad o ámbito de mejora",
         "measure": "propuesta de medida",
         "methodologyAdjustments": "ajustes en las actividades"
       }
