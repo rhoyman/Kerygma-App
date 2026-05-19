@@ -55,6 +55,8 @@ import {
   Users2,
   ClipboardCheck,
   RefreshCcw,
+  RefreshCw,
+  ShieldAlert,
   Eye,
   Settings2
 } from 'lucide-react';
@@ -3716,17 +3718,72 @@ export default function App() {
           ) : activeBlock.step === 'evaluation' ? (
             <div className="max-w-4xl mx-auto space-y-12 py-8 pb-32">
               <div className="space-y-4">
-                <div className="flex items-center gap-4">
-                  <button 
-                    onClick={() => updateBlock(activeBlock.id, { step: 'diversity' })}
-                    className="p-2 hover:bg-gray-100 rounded-full text-gray-400"
-                  >
-                    <ChevronLeft className="w-6 h-6" />
-                  </button>
-                  <h2 className="text-4xl font-bold serif text-primary">5. Evaluación</h2>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <button 
+                      onClick={() => updateBlock(activeBlock.id, { step: 'diversity' })}
+                      className="p-2 hover:bg-gray-100 rounded-full text-gray-400"
+                    >
+                      <ChevronLeft className="w-6 h-6" />
+                    </button>
+                    <h2 className="text-4xl font-bold serif text-primary">5. Evaluación</h2>
+                  </div>
+                  {activeBlock.evaluation?.instruments && activeBlock.evaluation.instruments.length > 0 && (
+                    <button
+                      onClick={() => {
+                        if (confirm('¿Estás seguro de que quieres regenerar toda la evaluación? Se borrarán los instrumentos actuales.')) {
+                          handleGenerateEvaluationAction();
+                        }
+                      }}
+                      disabled={isAnalyzing}
+                      className="flex items-center gap-2 px-6 py-3 bg-red-50 text-red-600 rounded-2xl font-bold uppercase tracking-widest text-[10px] hover:bg-red-100 transition-all disabled:opacity-50"
+                    >
+                      {isAnalyzing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                      <span>Regenerar Evaluación Completa</span>
+                    </button>
+                  )}
                 </div>
                 <p className="text-gray-500 text-lg">Concreción de herramientas para valorar el aprendizaje.</p>
               </div>
+
+              {/* Coverage Check */}
+              {activeBlock.evaluation?.instruments && activeBlock.evaluation.instruments.length > 0 && (
+                <div className="p-6 bg-amber-50 rounded-[2rem] border border-amber-100 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-bold text-amber-800 uppercase tracking-widest flex items-center gap-2">
+                      <ShieldAlert className="w-4 h-4" /> Cobertura de Actividades
+                    </h4>
+                    <div className="flex items-center gap-2">
+                      <div className="w-32 h-2 bg-amber-200 rounded-full overflow-hidden">
+                        <div 
+                          className="h-full bg-amber-500 transition-all" 
+                          style={{ 
+                            width: `${(activeBlock.activities?.filter((_, i) => activeBlock.evaluation?.instruments.some(inst => inst.linkedActivitiesIds.includes(i.toString()))).length || 0) / (activeBlock.activities?.length || 1) * 100}%` 
+                          }} 
+                        />
+                      </div>
+                      <span className="text-[10px] font-bold text-amber-800">
+                        {activeBlock.activities?.filter((_, i) => activeBlock.evaluation?.instruments.some(inst => inst.linkedActivitiesIds.includes(i.toString()))).length || 0}/{activeBlock.activities?.length || 0} Evaluadas
+                      </span>
+                    </div>
+                  </div>
+                  
+                  {activeBlock.activities?.some((_, i) => !activeBlock.evaluation?.instruments.some(inst => inst.linkedActivitiesIds.includes(i.toString()))) && (
+                    <div className="flex flex-wrap gap-2">
+                       <p className="text-[10px] text-amber-700 w-full mb-1">Estas actividades no tienen ningún instrumento vinculado:</p>
+                       {activeBlock.activities?.map((a, i) => {
+                         const isEvaluated = activeBlock.evaluation?.instruments.some(inst => inst.linkedActivitiesIds.includes(i.toString()));
+                         if (isEvaluated) return null;
+                         return (
+                           <span key={i} className="px-2 py-1 bg-white border border-amber-200 rounded-lg text-[9px] text-amber-600 font-medium">
+                             Sesión {i+1}: {a.title}
+                           </span>
+                         );
+                       })}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {!activeBlock.evaluation?.instruments || activeBlock.evaluation.instruments.length === 0 ? (
                 <div className="bg-white rounded-[2.5rem] p-12 text-center space-y-6 border border-gray-100 shadow-xl shadow-gray-200/50">

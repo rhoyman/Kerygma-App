@@ -399,28 +399,33 @@ export async function generateEvaluationInstruments(
 
   const prompt = `Actúa como un experto en evaluación educativa para Religión Católica.
   Basándote en estas actividades de una situación de aprendizaje:
-  ${activities.map((a, i) => `Actividad ${i+1}: ${a.title}. ${a.description}`).join('\n')}
+  ${activities.map((a, i) => `[ID: ${i}] ${a.title}. ${a.description}`).join('\n')}
   
   Y estos contenidos: ${content}
 
   ${extraNotes ? `Preferencias del docente para la evaluación: "${extraNotes}"` : ''}
   
-  Propón 3 instrumentos de evaluación que abarquen el proceso y el producto final.
+  Tu tarea es proponer 3 o 4 instrumentos de evaluación que abarquen TODO el proceso de aprendizaje.
+  
+  REGLAS CRÍTICAS DE COBERTURA:
+  1. TODAS las actividades (${activities.length}) deben estar vinculadas a AL MENOS un instrumento. No dejes ninguna actividad sin método de evaluación.
+  2. Los instrumentos deben estar equilibrados: uno para el producto final, otro para el proceso (actividades diarias) y otro para la autoevaluación o coevaluación.
+  3. Usa los índices numéricos [ID: i] para vincular las actividades en 'linkedActivitiesIds'.
   
   CADA instrumento DEBE incluir su 'content' completo como objeto de datos (NO USES PLACEHOLDERS).
-  - Rúbrica: { "headers": [...], "rows": [{"criteria": "...", "cells": [...]}] }
-  - Lista de Cotejo: { "items": [...] }
-  - Prueba Escrita: { "questions": [{"question": "...", "options": [...]}] }
-  - Escala de Valoración: { "items": [...], "scale": [...] }
-  - Diana de Autoevaluación: { "indicators": [...], "levels": 5 } (donde indicators son los ejes del gráfico).
+  - Rúbrica: { "headers": ["Sobresaliente", "Notable", "Bien", "Insuficiente"], "rows": [{"criteria": "...", "cells": ["...", "...", "...", "..."]}] }
+  - Lista de Cotejo: { "items": ["indicador 1", "indicador 2", ...] }
+  - Prueba Escrita: { "questions": [{"question": "...", "options": ["a", "b", "c"]}] }
+  - Escala de Valoración: { "items": [...], "scale": ["1", "2", "3", "4", "5"] }
+  - Diana de Autoevaluación: { "indicators": [...], "levels": 5 }
 
   Responde solo JSON:
   {
     "instruments": [
       {
-        "name": "...",
-        "description": "...",
-        "linkedActivitiesIds": ["0"],
+        "name": "Nombre descriptivo",
+        "description": "Explicación de qué se evalúa y por qué",
+        "linkedActivitiesIds": ["0", "1", "3"], 
         "type": "Rúbrica | Lista de Cotejo | Prueba Escrita | Escala de Valoración | Diana de Autoevaluación",
         "content": { ... }
       }
