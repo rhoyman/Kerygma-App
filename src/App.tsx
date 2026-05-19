@@ -1236,7 +1236,8 @@ export default function App() {
       }
       setBlocks(local);
       if (local.length > 0) {
-        setActiveBlockId(prev => local.find(b => b.id === prev) ? prev : local[0].id);
+        // If current active block is still in local, keep it. Otherwise, stay in gallery (empty string).
+        setActiveBlockId(prev => (prev && local.find(b => b.id === prev)) ? prev : '');
       }
       setIsFirestoreLoading(false);
       return;
@@ -1306,13 +1307,10 @@ export default function App() {
           const cloudMatch = mergedMap.get(localId) || (suffixedId ? mergedMap.get(suffixedId) : null);
 
           if (cloudMatch) {
-            // Cloud version exists. If we have a pending local sync, preserve local version
-            // which uses the cloud ID as its destination.
             if (syncTimeoutRef.current[localId]) {
               mergedMap.set(cloudMatch.id, { ...lb, id: cloudMatch.id });
             }
           } else {
-            // No cloud version found. Keep if it belongs to user or is being adopted.
             if (!lb.userId || lb.userId === user.uid) {
               const finalId = suffixedId || lb.id;
               mergedMap.set(finalId, { ...lb, id: finalId, userId: user.uid });
@@ -1328,11 +1326,17 @@ export default function App() {
             return b.id.localeCompare(a.id);
           });
         
-        if (mergedArray.length > 0) {
-          if (!activeBlockId || !mergedArray.find(b => b.id === activeBlockId)) {
-            setActiveBlockId(mergedArray[0].id);
+        // We use functional update to check against the LATEST activeBlockId
+        setActiveBlockId(currentActiveId => {
+          if (currentActiveId && !mergedArray.find(b => b.id === currentActiveId)) {
+            const deletedBlock = currentBlocks.find(b => b.id === currentActiveId);
+            if (deletedBlock) {
+              setViewSelection({ stage: deletedBlock.stage, level: deletedBlock.level });
+            }
+            return '';
           }
-        }
+          return currentActiveId;
+        });
         
         return mergedArray;
       });
@@ -1881,14 +1885,22 @@ export default function App() {
     if (!deleteConfirmation) return;
     const id = deleteConfirmation;
     
+    // Find info about the block before deleting it to stay in the same course view
+    const blockToDelete = blocks.find(b => b.id === id);
+    const stage = blockToDelete?.stage;
+    const level = blockToDelete?.level;
+
     // Backup for rollback
-    const blockToRestore = blocks.find(b => b.id === id);
+    const blockToRestore = blockToDelete;
 
     // Optimistic local delete
     setBlocks(prev => {
       const next = prev.filter(b => b.id !== id);
       if (activeBlockId === id) {
-        setActiveBlockId(next[0]?.id || '');
+        setActiveBlockId('');
+        if (stage && level) {
+          setViewSelection({ stage, level });
+        }
       }
       return next;
     });
