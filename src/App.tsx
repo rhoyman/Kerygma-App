@@ -3103,9 +3103,30 @@ export default function App() {
                   >
                     <ChevronLeft className="w-6 h-6" />
                   </button>
-                  <h2 className="text-4xl font-bold serif text-primary">3. Aula</h2>
+                  <h2 className="text-4xl font-bold serif text-primary">3. Secuenciación y Aula</h2>
                 </div>
                 <p className="text-gray-500 text-lg">Tu hoja de ruta para el aula paso a paso.</p>
+
+                {/* Summary of selected criteria for reference */}
+                <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100">
+                  <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+                    <Target className="w-3 h-3" /> Criterios seleccionados para esta SdA
+                  </h4>
+                  <div className="flex flex-wrap gap-2">
+                    {(activeBlock.competenciasEspecíficas || []).flatMap(ce => ce.criteriosEvaluación.filter(c => c.selected)).map(crit => (
+                      <div key={crit.id} className="px-3 py-1 bg-white border border-gray-100 rounded-lg text-[9px] text-gray-600 shadow-sm" title={crit.description}>
+                        <span className="font-bold text-primary mr-1">{crit.id}:</span>
+                        {crit.description.substring(0, 60)}...
+                      </div>
+                    ))}
+                    {((activeBlock.competenciasEspecíficas || []).flatMap(ce => ce.criteriosEvaluación.filter(c => c.selected)).length === 0) && (
+                      <p className="text-[10px] text-red-400 italic">No hay criterios seleccionados. Vuelva al paso 1 para seleccionar criterios.</p>
+                    )}
+                  </div>
+                  <p className="text-[9px] text-gray-400 mt-3 italic">
+                    IMPORTANTE: Toda actividad debe vincularse a uno o varios de estos criterios para poder ser calificada en el aplicativo oficial.
+                  </p>
+                </div>
               </div>
 
               {/* Step 3: Unified Methodology and Resources Configuration */}
@@ -3529,8 +3550,9 @@ export default function App() {
                               />
                             </div>
                             <div className="space-y-2">
-                               <label className="text-[10px] font-bold text-gray-300 uppercase tracking-widest flex items-center gap-2">
-                                 <Target className="w-3 h-3" /> Evaluación (Criterios)
+                               <label className={`text-[10px] font-bold uppercase tracking-widest flex items-center gap-2 transition-colors ${!activity.criteria ? 'text-red-500' : 'text-gray-300'}`}>
+                                 <Target className={`w-3 h-3 ${!activity.criteria ? 'animate-pulse' : ''}`} /> Evaluación (Criterios)
+                                 {!activity.criteria && <span className="text-[8px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full font-bold">REQUERIDO PARA CALIFICAR</span>}
                                </label>
                                <AutoResizeTextArea
                                 value={activity.criteria || ''}
@@ -3539,8 +3561,8 @@ export default function App() {
                                   newList[index].criteria = e.target.value;
                                   updateBlock(activeBlock.id, { activities: newList });
                                 }}
-                                className="w-full bg-transparent border-none p-0 focus:ring-0 text-[11px] text-gray-500 italic"
-                                placeholder="Criterios asociados..."
+                                className={`w-full bg-transparent border-none p-0 focus:ring-0 text-[11px] italic transition-colors ${!activity.criteria ? 'text-red-400 placeholder:text-red-200' : 'text-gray-500'}`}
+                                placeholder="Escribe o pega los códigos de los criterios (ej: 1.1, 2.3)..."
                               />
                             </div>
                           </div>

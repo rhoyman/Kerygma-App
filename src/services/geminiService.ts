@@ -212,13 +212,15 @@ export async function generateSequencing(
         "description": "descripción",
         "timing": "tiempo",
         "resources": "recursos",
-        "criteria": "criterios de evaluación vinculados (incluye los códigos numéricos ej: 1.1, 2.3)",
+        "criteria": "OBLIGATORIO: criterios de evaluación vinculados (incluye los códigos numéricos ej: 1.1, 2.3 y descripción corta)",
         "exercises": "lista de ejercicios o tareas",
         "methodology": "metodología de la sesión"
       }
     ]
   }
-  Asegúrate de que los criterios de evaluación de cada actividad sean coherentes con el currículo oficial aportado. IMPORTANTE: En el campo "criteria" de cada actividad, incluye la descripción de los criterios de evaluación precedida por su código (ID). NO incluyas las competencias específicas.`;
+  Asegúrate de que los criterios de evaluación de cada actividad sean coherentes con el currículo oficial aportado. 
+  REGLA DE ORO DE EVALUACIÓN: En esta comunidad autónoma, toda actividad propuesta DEBE ser evaluable. Por tanto, es OBLIGATORIO que cada actividad tenga al menos un Criterio de Evaluación vinculado en el campo "criteria". No dejes ninguna actividad sin criterios.
+  IMPORTANTE: En el campo "criteria" de cada actividad, incluye la descripción de los criterios de evaluación precedida por su código (ID). NO incluyas las competencias específicas.`;
 
   try {
     const response = await ai.models.generateContent({
@@ -266,6 +268,8 @@ export async function regenerateActivity(
   
   Propón una nueva versión de esta actividad que sea más creativa y motivadora.
   
+  REGLA DE ORO DE EVALUACIÓN: Es obligatorio que la actividad tenga criterios de evaluación vinculados. No la devuelvas sin ellos.
+
   Responde ÚNICAMENTE con un objeto JSON (sin bloques markdown) con este formato:
   {
     "id": "${currentActivity.id}",
@@ -274,7 +278,7 @@ export async function regenerateActivity(
     "description": "nueva descripción detallada",
     "timing": "tiempo",
     "resources": "recursos",
-    "criteria": "criterios de evaluación vinculados (incluye los códigos numéricos)",
+    "criteria": "OBLIGATORIO: criterios de evaluación vinculados (incluye los códigos y descripción corta)",
     "exercises": "nuevos ejercicios o tareas",
     "methodology": "metodología sugerida para la sesión"
   }`;
