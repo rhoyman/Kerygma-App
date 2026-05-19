@@ -798,13 +798,18 @@ export default function App() {
       targetBlock.activities?.forEach((act, idx) => {
         actData.push([
           `${idx + 1}. ${act.title}\n(${act.category?.toUpperCase() || ''})`,
-          `${act.description}\n\nRECURSOS: ${act.resources}\nTIEMPO: ${act.timing}`
+          `DESCRIPCIÓN: ${act.description}\n\n` +
+          `TAREAS/EJERCICIOS: ${act.exercises || 'No especificados'}\n\n` +
+          `METODOLOGÍA: ${act.methodology || 'No especificada'}\n\n` +
+          `EVALUACIÓN (CRITERIOS): ${act.criteria || 'Sin vincular'}\n\n` +
+          `RECURSOS: ${act.resources}\n` +
+          `TIEMPO: ${act.timing}`
         ]);
       });
 
       autoTable(doc, {
         startY: currentY,
-        head: [['ACTIVIDAD', 'DESCRIPCIÓN Y RECURSOS']],
+        head: [['ACTIVIDAD', 'DESARROLLO, EVALUACIÓN Y RECURSOS']],
         body: actData,
         theme: 'grid',
         margin: { left: 20, right: 20 },
@@ -1152,6 +1157,12 @@ export default function App() {
           content += `**Tipo:** ${act.category.charAt(0).toUpperCase() + act.category.slice(1)}\n`;
         }
         content += `**Descripción:** ${act.description}\n\n`;
+        if (act.exercises) {
+          content += `**Tareas/Ejercicios:** ${act.exercises}\n\n`;
+        }
+        if (act.methodology) {
+          content += `**Metodología:** ${act.methodology}\n\n`;
+        }
         content += `- **Temporalización:** ${act.timing}\n`;
         content += `- **Recursos:** ${act.resources}\n`;
         if (act.criteria) {
@@ -1313,7 +1324,13 @@ export default function App() {
               mergedMap.set(cloudMatch.id, { ...lb, id: cloudMatch.id });
             }
           } else {
-            if (!lb.userId || lb.userId === user.uid) {
+            // If it's not in cloud, only keep it if it hasn't been synced yet (no userId)
+            // or if it's currently being synced (has a pending timeout).
+            // This prevents deleted cloud blocks from reappearing when the local state still has them.
+            const isPendingSync = syncTimeoutRef.current[localId];
+            const hasNotSyncedYet = !lb.userId;
+            
+            if (hasNotSyncedYet || isPendingSync) {
               const finalId = suffixedId || lb.id;
               mergedMap.set(finalId, { ...lb, id: finalId, userId: user.uid });
             }
@@ -1907,6 +1924,12 @@ export default function App() {
       return next;
     });
     setDeleteConfirmation(null);
+
+    // Cancel any pending sync for this block
+    if (syncTimeoutRef.current[id]) {
+      clearTimeout(syncTimeoutRef.current[id]);
+      delete syncTimeoutRef.current[id];
+    }
 
     // Remote delete if logged in
     if (user && db) {
